@@ -9,18 +9,26 @@ async function main() {
   const rootPkgPath = resolve(__dirname, '..', 'package.json');
   const outDir = resolve(__dirname, '..', 'dist');
   const raw = await readFile(rootPkgPath, 'utf8');
-  const pkg = JSON.parse(raw);
+  const {name, version, description, keywords, homepage, bugs, issues, repository, license, author} = JSON.parse(raw);
 
   const distPkg = {
-    name: pkg.name,
-    version: pkg.version,
-    description: pkg.description,
-    license: pkg.license,
-    author: pkg.author,
+    name,
+    version,
+    description,
+    keywords,
+    homepage,
+    bugs,
+    issues,
+    repository,
+    license,
+    author,
     main: './index.cjs',
     module: './index.js',
     types: './index.d.ts',
     files: ['./index.cjs', './index.js', './index.d.ts'],
+    bin: {
+      'beans-mcp': './beans-mcp-server.cjs'
+    },
     exports: {
       '.': {
         import: './index.js',

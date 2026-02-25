@@ -2,6 +2,19 @@
   "name": "@selfagency/beans-mcp",
   "version": "0.1.0",
   "description": "MCP (Model Context Protocol) server for Beans issue tracker",
+  "author": {
+    "name": "Daniel Sieradski",
+    "email": "daniel@self.agency",
+    "url": "https://self.agency"
+  },
+  "homepage": "https://github.com/hmans/beans",
+  "bugs": {
+    "url": "https://github.com/selfagency/beans-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/selfagency/beans-mcp.git"
+  },
   "keywords": [
     "beans",
     "mcp",
@@ -13,19 +26,19 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
-  "main": "./index.cjs",
-  "module": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "beans-mcp-server": "./beans-mcp-server.cjs"
+    "beans-mcp": "./dist/beans-mcp-server.cjs"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --out-dir dist",
+    "build": "tsup",
     "format": "oxfmt",
     "lint:fix": "oxlint --fix",
     "lint": "oxlint",
@@ -43,6 +56,7 @@
     "@vitest/ui": "4.0.18",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "ora": "^9.3.0",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",

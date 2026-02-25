@@ -156,6 +156,13 @@ describe('Handlers (unit)', () => {
     expect(backend.deleteBeanFile).toHaveBeenCalledWith('p');
   });
 
+  it('beanFileHandler throws on unsupported operation', async () => {
+    const backend = makeBackend();
+    await expect(beanFileHandler(backend)({ operation: 'noop' as 'read', path: 'p' })).rejects.toThrow(
+      'Unsupported operation',
+    );
+  });
+
   it('outputHandler read and show', async () => {
     const backend = makeBackend();
     const _r = await outputHandler(backend)({ operation: 'read', lines: 10 });

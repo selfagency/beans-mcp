@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node /Users/daniel/Developer/beans-mcp-server/dist/index.cjs)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(pnpm run build)",
+      "Bash(node /Users/daniel/Developer/beans-mcp-server/dist/beans-mcp-server.cjs --help)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test src/test/protocol.e2e.test.ts)",
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(p.get\\(''version''\\)\\); print\\(list\\(p.get\\(''exports'',{}\\).keys\\(\\)\\)[:15]\\)\")",
+      "Bash(node -e \"const {z} = require\\(''./node_modules/zod''\\); const s = z.string\\(\\); console.log\\(''v4 internal marker:'', !!s._zod\\); console.log\\(''v3 internal marker:'', !!s._def\\);\")",
+      "Bash(pnpm run type-check)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test --coverage)",
+      "Bash(git add README.md package.json scripts/write-dist-package.js src/cli.ts src/internal/queryHelpers.ts src/server/BeansMcpServer.ts src/server/backend.ts src/test/BeansMcpServer.test.ts src/test/handlers.unit.test.ts src/test/parseCliArgs.test.ts src/test/queryHelpers.test.ts tsup.config.ts src/test/protocol.e2e.test.ts src/test/startBeansMcpServer.test.ts CHANGELOG.md)"
+    ]
+  }
+}
