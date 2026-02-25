@@ -443,6 +443,11 @@ export function parseCliArgs(argv: string[]): {
     }
   }
 
+  // default logDir to the workspace root when not provided
+  if (!logDir) {
+    logDir = workspaceRoot;
+  }
+
   return { workspaceRoot, cliPath, port, logDir };
 }
 
