@@ -1,6 +1,6 @@
 {
   "name": "@selfagency/beans-mcp",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "private": false,
   "description": "MCP (Model Context Protocol) server for Beans issue tracker",
   "author": {
