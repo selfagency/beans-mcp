@@ -7,6 +7,7 @@ export default defineConfig([
     format: ['esm'],
     outDir: 'dist',
     target: 'node18',
+    splitting: false,
     dts: true,
     sourcemap: process.env.NODE_ENV !== 'production',
     clean: true,
