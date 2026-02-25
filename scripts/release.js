@@ -129,6 +129,14 @@ async function main() {
   }
   gitCmd = resolvedGit;
 
+  // Check npm credentials.
+  try {
+    await $`npm whoami`;
+  } catch {
+    console.error('❌ Not logged in to npm. Run: npm login');
+    process.exit(1);
+  }
+
   // Resolve GitHub auth token: prefer env vars, then ask the gh CLI.
   let githubToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? '';
   if (!githubToken) {
@@ -284,7 +292,7 @@ async function main() {
   await sleep(10_000);
 
   const spinner = ora({ text: 'Tests: queued' }).start();
-  for (const name of ['Tests', 'Remote Tests']) {
+  for (const name of ['Test & Build']) {
     spinner.text = `${name}: queued`;
     spinner.start();
     await waitForWorkflow(octokit, name, owner, repo, headSha, spinner);
@@ -319,7 +327,21 @@ async function main() {
   });
 
   releaseDone = true;
-  console.log(`✅ Release complete: ${tag} → ${headSha}`);
+  console.log(`✅ GitHub release complete: ${tag} → ${headSha}`);
+
+  // --- npm publish ----------------------------------------------------------
+
+  console.log('📦 Building package...');
+  $.verbose = true;
+  await $`pnpm build`;
+  $.verbose = false;
+
+  const distTag = version.includes('-') ? 'next' : 'latest';
+  console.log(`🚀 Publishing ${tag} to npm (dist-tag: ${distTag})...`);
+  $.verbose = true;
+  await $`npm publish ./dist --tag ${distTag}`;
+  $.verbose = false;
+  console.log(`✅ Published ${tag} to npm.`);
 }
 
 // ---------------------------------------------------------------------------
