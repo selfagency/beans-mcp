@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { handleQueryOperation, sortBeans } from '../internal/queryHelpers';
 import {
   DEFAULT_MCP_PORT,
   MAX_DESCRIPTION_LENGTH,
@@ -7,10 +8,8 @@ import {
   MAX_METADATA_LENGTH,
   MAX_PATH_LENGTH,
   MAX_TITLE_LENGTH,
-  
 } from '../types';
 import { makeTextAndStructured } from '../utils';
-import { handleQueryOperation, sortBeans } from '../internal/queryHelpers';
 import type { BackendInterface } from './backend';
 
 export { sortBeans };
@@ -38,8 +37,7 @@ export function initHandler(backend: BackendInterface) {
 }
 
 export function viewHandler(backend: BackendInterface) {
-  return async ({ beanId }: { beanId: string }) =>
-    makeTextAndStructured({ bean: await getBeanById(backend, beanId) });
+  return async ({ beanId }: { beanId: string }) => makeTextAndStructured({ bean: await getBeanById(backend, beanId) });
 }
 
 export function createHandler(backend: BackendInterface) {
@@ -54,7 +52,10 @@ export function createHandler(backend: BackendInterface) {
 }
 
 export function editHandler(backend: BackendInterface) {
-  return async ({ beanId, ...updates }: {
+  return async ({
+    beanId,
+    ...updates
+  }: {
     beanId: string;
     status?: string;
     type?: string;
@@ -67,7 +68,11 @@ export function editHandler(backend: BackendInterface) {
 }
 
 export function reopenHandler(backend: BackendInterface) {
-  return async ({ beanId, requiredCurrentStatus, targetStatus }: {
+  return async ({
+    beanId,
+    requiredCurrentStatus,
+    targetStatus,
+  }: {
     beanId: string;
     requiredCurrentStatus: 'completed' | 'scrapped';
     targetStatus: string;
@@ -76,7 +81,9 @@ export function reopenHandler(backend: BackendInterface) {
     if (bean.status !== requiredCurrentStatus) {
       throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
     }
-    return makeTextAndStructured({ bean: await backend.update(beanId, { status: targetStatus }) });
+    return makeTextAndStructured({
+      bean: await backend.update(beanId, { status: targetStatus }),
+    });
   };
 }
 
@@ -122,7 +129,12 @@ export function queryHandler(backend: BackendInterface) {
 }
 
 export function beanFileHandler(backend: BackendInterface) {
-  return async ({ operation, path, content, overwrite }: {
+  return async ({
+    operation,
+    path,
+    content,
+    overwrite,
+  }: {
     operation: 'read' | 'edit' | 'create' | 'delete';
     path: string;
     content?: string;
@@ -159,7 +171,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
   // register exported handlers bound to this backend
 
   server.registerTool(
-    'beans_vscode_init',
+    'beans_init',
     {
       title: 'Initialize Beans Workspace',
       description: 'Initialize Beans in the current workspace, equivalent to the extension init command.',
@@ -173,11 +185,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    initHandler(backend)
+    initHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_view',
+    'beans_view',
     {
       title: 'View Bean',
       description: 'Fetch full bean details by ID.',
@@ -189,11 +201,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    viewHandler(backend)
+    viewHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_create',
+    'beans_create',
     {
       title: 'Create Bean',
       description: 'Create a new bean.',
@@ -212,11 +224,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    createHandler(backend)
+    createHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_edit',
+    'beans_edit',
     {
       title: 'Edit Bean Metadata',
       description: 'Update bean metadata fields (status/type/priority/parent/blocking).',
@@ -237,11 +249,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    editHandler(backend)
+    editHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_reopen',
+    'beans_reopen',
     {
       title: 'Reopen Bean',
       description: 'Reopen a completed or scrapped bean into a non-closed status.',
@@ -257,11 +269,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    reopenHandler(backend)
+    reopenHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_update',
+    'beans_update',
     {
       title: 'Update Bean',
       description:
@@ -283,11 +295,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    updateHandler(backend)
+    updateHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_delete',
+    'beans_delete',
     {
       title: 'Delete Bean',
       description: 'Delete a bean (intended for draft/scrapped beans).',
@@ -302,33 +314,22 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    deleteHandler(backend)
+    deleteHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_query',
+    'beans_query',
     {
       title: 'Query Beans',
       description: 'Unified query tool for refresh, filter, search, and sort operations.',
       inputSchema: z.object({
-        operation: z
-          .enum(['refresh', 'filter', 'search', 'sort', 'llm_context', 'open_config'])
-          .default('refresh'),
+        operation: z.enum(['refresh', 'filter', 'search', 'sort', 'llm_context', 'open_config']).default('refresh'),
         mode: z.enum(['status-priority-type-title', 'updated', 'created', 'id']).optional(),
-        statuses: z
-          .array(z.string().max(MAX_METADATA_LENGTH))
-          .nullable()
-          .optional(),
-        types: z
-          .array(z.string().max(MAX_METADATA_LENGTH))
-          .nullable()
-          .optional(),
+        statuses: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+        types: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
         search: z.string().max(MAX_TITLE_LENGTH).optional(),
         includeClosed: z.boolean().optional(),
-        tags: z
-          .array(z.string().max(MAX_METADATA_LENGTH))
-          .nullable()
-          .optional(),
+        tags: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
         writeToWorkspaceInstructions: z.boolean().optional(),
       }),
       annotations: {
@@ -338,11 +339,11 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    queryHandler(backend)
+    queryHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_bean_file',
+    'beans_bean_file',
     {
       title: 'Bean File Operations',
       description: 'Read, create, edit, or delete files under .beans (operation param).',
@@ -359,22 +360,17 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    beanFileHandler(backend)
+    beanFileHandler(backend),
   );
 
   server.registerTool(
-    'beans_vscode_output',
+    'beans_output',
     {
       title: 'Beans Output Tools',
       description: 'Read extension output log or show guidance (operation param).',
       inputSchema: z.object({
         operation: z.enum(['read', 'show']).default('read'),
-        lines: z
-          .number()
-          .int()
-          .min(1)
-          .max(5000)
-          .optional(),
+        lines: z.number().int().min(1).max(5000).optional(),
       }),
       annotations: {
         readOnlyHint: true,
@@ -383,7 +379,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    outputHandler(backend)
+    outputHandler(backend),
   );
 }
 
@@ -428,7 +424,7 @@ export function parseCliArgs(argv: string[]): {
       i += 1;
     } else if (arg === '--cli-path' && argv[i + 1]) {
       cliPath = argv[i + 1]!;
-      if (/[\s;&|><$(){}\[\]`]/.test(cliPath)) {
+      if (/[\s;&|><$(){}[\]`]/.test(cliPath)) {
         throw new Error('Invalid CLI path');
       }
       i += 1;

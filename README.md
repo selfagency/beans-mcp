@@ -1,32 +1,13 @@
-# beans-mcp-server
+# beans-mcp
 
-MCP (Model Context Protocol) server for [Beans](https://beans.self.agency) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
+MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
 
-## Installation
-
-```bash
-npm install beans-mcp-server
-```
+> Try Beans fully-integrated with GitHub Copilot in VS Code! Install the [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode) extension.
 
 ## Usage
 
-### Programmatic API
-
-```typescript
-import { createBeansMcpServer, parseCliArgs } from 'beans-mcp-server';
-
-const server = await createBeansMcpServer({
-  workspaceRoot: '/path/to/workspace',
-  cliPath: 'beans', // or path to beans CLI
-});
-
-// Connect to stdio transport or your own transport
-```
-
-### CLI
-
 ```bash
-beans-mcp-server /path/to/workspace --cli-path beans --port 39173
+npx beans-mcp /path/to/workspace --cli-path beans --port 39173
 ```
 
 ## API
@@ -36,9 +17,10 @@ beans-mcp-server /path/to/workspace --cli-path beans --port 39173
 Creates and initializes a Beans MCP server instance.
 
 **Options:**
+
 - `workspaceRoot` (string): Path to the Beans workspace
 - `cliPath` (string, optional): Path to Beans CLI executable (default: 'beans')
-- `name` (string, optional): Server name (default: 'beans-mcp-server')
+- `name` (string, optional): Server name (default: 'beans-mcp')
 - `version` (string, optional): Server version
 - `logDir` (string, optional): Directory for server logs
 - `allowedRoots` (string[], optional): Allowed file system roots
@@ -51,6 +33,7 @@ Creates and initializes a Beans MCP server instance.
 CLI-compatible entrypoint for launching the server.
 
 **Options:**
+
 - `--workspace-root` or positional arg: Workspace root path
 - `--cli-path`: Path to Beans CLI
 - `--port`: MCP server port (default: 39173)
