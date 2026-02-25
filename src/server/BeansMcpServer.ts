@@ -7,7 +7,7 @@ import {
   MAX_METADATA_LENGTH,
   MAX_PATH_LENGTH,
   MAX_TITLE_LENGTH,
-  SortMode,
+  
 } from '../types';
 import { makeTextAndStructured } from '../utils';
 import { handleQueryOperation, sortBeans } from '../internal/queryHelpers';
@@ -15,20 +15,148 @@ import type { BackendInterface } from './backend';
 
 export { sortBeans };
 
-function registerTools(server: McpServer, backend: BackendInterface): void {
-  // Helper: robustly retrieve a bean by ID
-  async function getBean(beanId: string) {
-    try {
-      const beans = await backend.list();
-      const found = beans.find(b => b.id === beanId);
-      if (!found) {
-        throw new Error(`Bean not found: ${beanId}`);
-      }
-      return found;
-    } catch (error) {
-      throw new Error(`Failed to fetch bean ${beanId}: ${(error as Error).message}`);
+// Exported test seam: get a bean by id with consistent error messages
+export async function getBeanById(backend: BackendInterface, beanId: string) {
+  try {
+    const beans = await backend.list();
+    const found = beans.find(b => b.id === beanId);
+    if (!found) {
+      throw new Error(`Bean not found: ${beanId}`);
     }
+    return found;
+  } catch (error) {
+    throw new Error(`Failed to fetch bean ${beanId}: ${(error as Error).message}`);
   }
+}
+
+// Exported handler factories so unit tests can call handlers directly.
+export function initHandler(backend: BackendInterface) {
+  return async ({ prefix }: { prefix?: string }) => {
+    const result = await backend.init(prefix);
+    return makeTextAndStructured(result);
+  };
+}
+
+export function viewHandler(backend: BackendInterface) {
+  return async ({ beanId }: { beanId: string }) =>
+    makeTextAndStructured({ bean: await getBeanById(backend, beanId) });
+}
+
+export function createHandler(backend: BackendInterface) {
+  return async (input: {
+    title: string;
+    type: string;
+    status?: string;
+    priority?: string;
+    description?: string;
+    parent?: string;
+  }) => makeTextAndStructured({ bean: await backend.create(input) });
+}
+
+export function editHandler(backend: BackendInterface) {
+  return async ({ beanId, ...updates }: {
+    beanId: string;
+    status?: string;
+    type?: string;
+    priority?: string;
+    parent?: string;
+    clearParent?: boolean;
+    blocking?: string[];
+    blockedBy?: string[];
+  }) => makeTextAndStructured({ bean: await backend.update(beanId, updates) });
+}
+
+export function reopenHandler(backend: BackendInterface) {
+  return async ({ beanId, requiredCurrentStatus, targetStatus }: {
+    beanId: string;
+    requiredCurrentStatus: 'completed' | 'scrapped';
+    targetStatus: string;
+  }) => {
+    const bean = await getBeanById(backend, beanId);
+    if (bean.status !== requiredCurrentStatus) {
+      throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
+    }
+    return makeTextAndStructured({ bean: await backend.update(beanId, { status: targetStatus }) });
+  };
+}
+
+export function updateHandler(backend: BackendInterface) {
+  return async (input: {
+    beanId: string;
+    status?: string;
+    type?: string;
+    priority?: string;
+    parent?: string;
+    clearParent?: boolean;
+    blocking?: string[];
+    blockedBy?: string[];
+  }) =>
+    makeTextAndStructured({
+      bean: await backend.update(input.beanId, {
+        status: input.status,
+        type: input.type,
+        priority: input.priority,
+        parent: input.parent,
+        clearParent: input.clearParent,
+        blocking: input.blocking,
+        blockedBy: input.blockedBy,
+      }),
+    });
+}
+
+export function deleteHandler(backend: BackendInterface) {
+  return async ({ beanId, force }: { beanId: string; force: boolean }) => {
+    const bean = await getBeanById(backend, beanId);
+    if (!force && bean.status !== 'draft' && bean.status !== 'scrapped') {
+      throw new Error('Only draft and scrapped beans are deletable unless force=true');
+    }
+    return makeTextAndStructured(await backend.delete(beanId));
+  };
+}
+
+export function queryHandler(backend: BackendInterface) {
+  return async (opts: any) => {
+    const result = await handleQueryOperation(backend, opts);
+    return result;
+  };
+}
+
+export function beanFileHandler(backend: BackendInterface) {
+  return async ({ operation, path, content, overwrite }: {
+    operation: 'read' | 'edit' | 'create' | 'delete';
+    path: string;
+    content?: string;
+    overwrite?: boolean;
+  }) => {
+    if (operation === 'read') {
+      return makeTextAndStructured(await backend.readBeanFile(path));
+    }
+    if (operation === 'edit') {
+      return makeTextAndStructured(await backend.editBeanFile(path, content || ''));
+    }
+    if (operation === 'create') {
+      return makeTextAndStructured(await backend.createBeanFile(path, content || '', { overwrite }));
+    }
+    if (operation === 'delete') {
+      return makeTextAndStructured(await backend.deleteBeanFile(path));
+    }
+    throw new Error('Unsupported operation');
+  };
+}
+
+export function outputHandler(backend: BackendInterface) {
+  return async ({ operation, lines }: { operation: 'read' | 'show'; lines?: number }) => {
+    if (operation === 'read') {
+      return makeTextAndStructured(await backend.readOutputLog({ lines }));
+    }
+    return makeTextAndStructured({
+      message:
+        'When using VS Code UI, run command `Beans: Show Output` to open extension logs. In MCP mode, rely on tool error outputs and host logs.',
+    });
+  };
+}
+function registerTools(server: McpServer, backend: BackendInterface): void {
+  // register exported handlers bound to this backend
 
   server.registerTool(
     'beans_vscode_init',
@@ -45,10 +173,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({ prefix }: { prefix?: string }) => {
-      const result = await backend.init(prefix);
-      return makeTextAndStructured(result);
-    }
+    initHandler(backend)
   );
 
   server.registerTool(
@@ -64,7 +189,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({ beanId }: { beanId: string }) => makeTextAndStructured({ bean: await getBean(beanId) })
+    viewHandler(backend)
   );
 
   server.registerTool(
@@ -87,14 +212,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async (input: {
-      title: string;
-      type: string;
-      status?: string;
-      priority?: string;
-      description?: string;
-      parent?: string;
-    }) => makeTextAndStructured({ bean: await backend.create(input) })
+    createHandler(backend)
   );
 
   server.registerTool(
@@ -119,19 +237,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({
-      beanId,
-      ...updates
-    }: {
-      beanId: string;
-      status?: string;
-      type?: string;
-      priority?: string;
-      parent?: string;
-      clearParent?: boolean;
-      blocking?: string[];
-      blockedBy?: string[];
-    }) => makeTextAndStructured({ bean: await backend.update(beanId, updates) })
+    editHandler(backend)
   );
 
   server.registerTool(
@@ -151,21 +257,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({
-      beanId,
-      requiredCurrentStatus,
-      targetStatus,
-    }: {
-      beanId: string;
-      requiredCurrentStatus: 'completed' | 'scrapped';
-      targetStatus: string;
-    }) => {
-      const bean = await getBean(beanId);
-      if (bean.status !== requiredCurrentStatus) {
-        throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
-      }
-      return makeTextAndStructured({ bean: await backend.update(beanId, { status: targetStatus }) });
-    }
+    reopenHandler(backend)
   );
 
   server.registerTool(
@@ -191,27 +283,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async (input: {
-      beanId: string;
-      status?: string;
-      type?: string;
-      priority?: string;
-      parent?: string;
-      clearParent?: boolean;
-      blocking?: string[];
-      blockedBy?: string[];
-    }) =>
-      makeTextAndStructured({
-        bean: await backend.update(input.beanId, {
-          status: input.status,
-          type: input.type,
-          priority: input.priority,
-          parent: input.parent,
-          clearParent: input.clearParent,
-          blocking: input.blocking,
-          blockedBy: input.blockedBy,
-        }),
-      })
+    updateHandler(backend)
   );
 
   server.registerTool(
@@ -230,13 +302,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({ beanId, force }: { beanId: string; force: boolean }) => {
-      const bean = await getBean(beanId);
-      if (!force && bean.status !== 'draft' && bean.status !== 'scrapped') {
-        throw new Error('Only draft and scrapped beans are deletable unless force=true');
-      }
-      return makeTextAndStructured(await backend.delete(beanId));
-    }
+    deleteHandler(backend)
   );
 
   server.registerTool(
@@ -272,37 +338,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({
-      operation,
-      mode,
-      statuses,
-      types,
-      search,
-      tags,
-      writeToWorkspaceInstructions,
-      includeClosed,
-    }: {
-      operation: 'refresh' | 'filter' | 'search' | 'sort' | 'llm_context' | 'open_config';
-      mode?: SortMode;
-      statuses?: string[] | null;
-      types?: string[] | null;
-      search?: string;
-      tags?: string[] | null;
-      writeToWorkspaceInstructions?: boolean;
-      includeClosed?: boolean;
-    }) => {
-      const result = await handleQueryOperation(backend, {
-        operation,
-        mode,
-        statuses,
-        types,
-        search,
-        tags,
-        writeToWorkspaceInstructions,
-        includeClosed,
-      });
-      return result;
-    }
+    queryHandler(backend)
   );
 
   server.registerTool(
@@ -323,31 +359,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({
-      operation,
-      path,
-      content,
-      overwrite,
-    }: {
-      operation: 'read' | 'edit' | 'create' | 'delete';
-      path: string;
-      content?: string;
-      overwrite?: boolean;
-    }) => {
-      if (operation === 'read') {
-        return makeTextAndStructured(await backend.readBeanFile(path));
-      }
-      if (operation === 'edit') {
-        return makeTextAndStructured(await backend.editBeanFile(path, content || ''));
-      }
-      if (operation === 'create') {
-        return makeTextAndStructured(await backend.createBeanFile(path, content || '', { overwrite }));
-      }
-      if (operation === 'delete') {
-        return makeTextAndStructured(await backend.deleteBeanFile(path));
-      }
-      throw new Error('Unsupported operation');
-    }
+    beanFileHandler(backend)
   );
 
   server.registerTool(
@@ -371,15 +383,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         openWorldHint: false,
       },
     },
-    async ({ operation, lines }: { operation: 'read' | 'show'; lines?: number }) => {
-      if (operation === 'read') {
-        return makeTextAndStructured(await backend.readOutputLog({ lines }));
-      }
-      return makeTextAndStructured({
-        message:
-          'When using VS Code UI, run command `Beans: Show Output` to open extension logs. In MCP mode, rely on tool error outputs and host logs.',
-      });
-    }
+    outputHandler(backend)
   );
 }
 
