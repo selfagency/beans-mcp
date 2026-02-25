@@ -1,28 +1,7 @@
 {
-  "name": "beans-mcp-server",
+  "name": "@selfagency/beans-mcp",
   "version": "0.1.0",
   "description": "MCP (Model Context Protocol) server for Beans issue tracker",
-  "license": "MIT",
-  "engines": {
-    "node": ">=18"
-  },
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
-  "bin": {
-    "beans-mcp-server": "./dist/beans-mcp-server.cjs"
-  },
-  "files": [
-    "dist"
-  ],
   "keywords": [
     "beans",
     "mcp",
@@ -30,22 +9,46 @@
     "issue-tracker",
     "ai"
   ],
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "main": "./index.cjs",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "bin": {
+    "beans-mcp-server": "./beans-mcp-server.cjs"
+  },
   "scripts": {
-    "build": "tsup",
-    "build:watch": "tsup --watch",
-    "test": "vitest run",
+    "build": "tsup src/index.ts --format cjs,esm --dts --out-dir dist",
+    "format": "oxfmt",
+    "lint:fix": "oxlint --fix",
+    "lint": "oxlint",
+    "postbuild": "node ./scripts/write-dist-package.js",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "test": "vitest run",
     "type-check": "tsc --noEmit"
   },
-  "dependencies": {
+  "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@types/node": "^20.19.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "4.0.18",
+    "oxfmt": "^0.35.0",
+    "oxlint": "^1.50.0",
+    "oxlint-tsgolint": "^0.15.0",
+    "tsup": "8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "4.0.18",
     "zod": "4.3.6"
   },
-  "devDependencies": {
-    "tsup": "8.5.1",
-    "@types/node": "^20.19.0",
-    "@vitest/ui": "4.0.18",
-    "typescript": "^5.9.3",
-    "vitest": "4.0.18"
+  "engines": {
+    "node": ">=18"
   }
 }
