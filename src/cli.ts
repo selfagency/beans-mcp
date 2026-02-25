@@ -7,8 +7,10 @@
 
 import { startBeansMcpServer } from './server/BeansMcpServer';
 
-if (import.meta.main || require.main === module) {
-  startBeansMcpServer(process.argv.slice(2)).catch(error => {
+// Works in both ESM and CJS
+const isMainModule = typeof require !== 'undefined' && require.main === module;
+if (isMainModule) {
+  startBeansMcpServer(process.argv.slice(2)).catch((error) => {
     console.error('[beans-mcp-server] fatal:', error);
     process.exit(1);
   });
