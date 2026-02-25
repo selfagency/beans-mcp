@@ -30,6 +30,7 @@
     "lint:fix": "oxlint --fix",
     "lint": "oxlint",
     "postbuild": "node ./scripts/write-dist-package.js",
+    "prepare": "husky",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test": "vitest run",
@@ -40,6 +41,8 @@
     "@types/node": "^20.19.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "4.0.18",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "oxfmt": "^0.35.0",
     "oxlint": "^1.50.0",
     "oxlint-tsgolint": "^0.15.0",
@@ -50,5 +53,11 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "pnpm run lint:fix",
+      "pnpm run format"
+    ]
   }
 }
