@@ -1,10 +1,10 @@
-# beans-mcp
+# @selfagency/beans-mcp 🫘
+
+[![Test & Build](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml) [![codecov](https://codecov.io/gh/selfagency/beans-mcp/graph/badge.svg?token=udeAJyu8Nu)](https://codecov.io/gh/selfagency/beans-mcp)
 
 MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
 
-<div style="border: 1px solid; border-radius: 12px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-items: center;">
-  <span><strong>Try Beans fully-integrated with GitHub Copilot in VS Code! Install the <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode">selfagency.beans-vscode</a> extension.</strong></span>
-</div>
+> 🤖 **Try Beans fully-integrated with GitHub Copilot in VS Code! Install the <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode">selfagency.beans-vscode</a> extension.**
 
 ## Usage
 
