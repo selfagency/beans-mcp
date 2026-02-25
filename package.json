@@ -44,7 +44,7 @@
     "lint": "oxlint",
     "postbuild": "node ./scripts/write-dist-package.js",
     "prepare": "husky",
-    "release": "zx ./scripts/release.mjs",
+    "release": "zx ./scripts/release.js",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test": "vitest run",
