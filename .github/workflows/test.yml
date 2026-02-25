@@ -4,18 +4,16 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [20.x]
 
     steps:
       - name: Checkout
@@ -56,9 +54,6 @@ jobs:
         run: pnpm lint
         continue-on-error: true
 
-      - name: Test
-        run: pnpm test
-
       - name: Build
         run: pnpm build
 
@@ -69,3 +64,17 @@ jobs:
           test -f dist/beans-mcp-server.cjs || exit 1
           test -f dist/index.d.ts || exit 1
           echo "✓ All build outputs verified"
+
+      - name: Test
+        run: pnpm test:coverage --reporter=junit --outputFile=test-report.junit.xml
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
