@@ -2,7 +2,7 @@
 
 MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
 
-> Try Beans fully-integrated with GitHub Copilot in VS Code! Install the [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode) extension.
+**Try Beans fully-integrated with GitHub Copilot in VS Code! Install the [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode) extension.**
 
 ## Usage
 
