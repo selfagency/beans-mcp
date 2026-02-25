@@ -2,13 +2,23 @@
 
 MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
 
-**Try Beans fully-integrated with GitHub Copilot in VS Code! Install the [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode) extension.**
+<div style="border: 1px solid; border-radius: 12px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-items: center;">
+  <span><strong>Try Beans fully-integrated with GitHub Copilot in VS Code! Install the <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode">selfagency.beans-vscode</a> extension.</strong></span>
+</div>
 
 ## Usage
 
 ```bash
-npx beans-mcp /path/to/workspace --cli-path beans --port 39173
+npx @selfagency/beans-mcp /path/to/workspace
 ```
+
+### Parameters
+
+- `--workspace-root` or positional arg: Workspace root path
+- `--cli-path`: Path to Beans CLI
+- `--port`: MCP server port (default: 39173)
+- `--log-dir`: Log directory
+- `-h`, `--help`: Print usage and exit
 
 ## Summary of public MCP tools
 
@@ -251,7 +261,7 @@ npm install beans-mcp
 ### Example
 
 ```typescript
-import { createBeansMcpServer, parseCliArgs } from "beans-mcp";
+import { createBeansMcpServer, parseCliArgs } from "@selfagency/beans-mcp";
 
 const server = await createBeansMcpServer({
   workspaceRoot: "/path/to/workspace",
@@ -271,10 +281,9 @@ Creates and initializes a Beans MCP server instance.
 
 - `workspaceRoot` (string): Path to the Beans workspace
 - `cliPath` (string, optional): Path to Beans CLI executable (default: 'beans')
-- `name` (string, optional): Server name (default: 'beans-mcp')
+- `name` (string, optional): Server name (default: 'beans-mcp-server')
 - `version` (string, optional): Server version
 - `logDir` (string, optional): Directory for server logs
-- `allowedRoots` (string[], optional): Allowed file system roots
 - `backend` (BackendInterface, optional): Custom backend implementation
 
 **Returns:** `{ server: McpServer; backend: BackendInterface }`
@@ -282,13 +291,6 @@ Creates and initializes a Beans MCP server instance.
 #### startBeansMcpServer(argv)
 
 CLI-compatible entrypoint for launching the server.
-
-**Options:**
-
-- `--workspace-root` or positional arg: Workspace root path
-- `--cli-path`: Path to Beans CLI
-- `--port`: MCP server port (default: 39173)
-- `--log-dir`: Log directory
 
 ### Utility Functions
 

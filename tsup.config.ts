@@ -2,29 +2,36 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
   {
-    // ESM entry point
+    // ESM library entry point
     entry: { index: 'src/index.ts' },
     format: ['esm'],
     outDir: 'dist',
+    target: 'node18',
     dts: true,
     sourcemap: process.env.NODE_ENV !== 'production',
     clean: true,
   },
   {
-    // CommonJS entry point
+    // CJS library entry point
     entry: { index: 'src/index.ts' },
     format: ['cjs'],
     outDir: 'dist',
     outExtension: () => ({ js: '.cjs' }),
+    target: 'node18',
+    splitting: false,
+    cjsInterop: true,
     dts: false,
     sourcemap: process.env.NODE_ENV !== 'production',
   },
   {
-    // CLI entry point (CommonJS with shebang)
+    // CLI binary entry point
     entry: { 'beans-mcp-server': 'src/cli.ts' },
     format: ['cjs'],
     outDir: 'dist',
     outExtension: () => ({ js: '.cjs' }),
+    target: 'node18',
+    splitting: false,
+    cjsInterop: true,
     dts: false,
     sourcemap: process.env.NODE_ENV !== 'production',
     banner: {

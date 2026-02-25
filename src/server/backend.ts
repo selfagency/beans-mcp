@@ -35,7 +35,7 @@ export interface BackendInterface {
       clearParent?: boolean;
       blocking?: string[];
       blockedBy?: string[];
-    }
+    },
   ): Promise<BeanRecord>;
   delete(beanId: string): Promise<Record<string, unknown>>;
   openConfig(): Promise<{ configPath: string; content: string }>;
@@ -46,7 +46,7 @@ export interface BackendInterface {
   createBeanFile(
     relativePath: string,
     content: string,
-    options?: { overwrite?: boolean }
+    options?: { overwrite?: boolean },
   ): Promise<{ path: string; bytes: number; created: boolean }>;
   deleteBeanFile(relativePath: string): Promise<{ path: string; deleted: boolean }>;
 }
@@ -59,7 +59,7 @@ export class BeansCliBackend implements BackendInterface {
   constructor(
     private readonly workspaceRoot: string,
     private readonly cliPath: string,
-    private readonly logDir?: string
+    private readonly logDir?: string,
   ) {}
 
   /**
@@ -111,7 +111,7 @@ export class BeansCliBackend implements BackendInterface {
    */
   private async executeGraphQL<T>(
     query: string,
-    variables?: Record<string, unknown>
+    variables?: Record<string, unknown>,
   ): Promise<{ data: T; errors?: GraphQLError[] }> {
     const args = ['graphql', '--json', query];
 
@@ -132,7 +132,7 @@ export class BeansCliBackend implements BackendInterface {
       return { data: JSON.parse(stdout) as T };
     } catch (error) {
       throw new Error(
-        `Failed to parse Beans CLI GraphQL output: ${(error as Error).message}\nOutput: ${stdout.slice(0, 1000)}`
+        `Failed to parse Beans CLI GraphQL output: ${(error as Error).message}\nOutput: ${stdout.slice(0, 1000)}`,
       );
     }
   }
@@ -153,7 +153,7 @@ export class BeansCliBackend implements BackendInterface {
   }
 
   async list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]> {
-    const filter: Record<string, any> = {};
+    const filter: { status?: string[]; type?: string[]; search?: string } = {};
 
     if (options?.status && options.status.length > 0) {
       filter.status = options.status;
@@ -193,12 +193,9 @@ export class BeansCliBackend implements BackendInterface {
       parent: input.parent,
     };
 
-    const { data, errors } = await this.executeGraphQL<{ createBean: BeanRecord }>(
-      graphql.CREATE_BEAN_MUTATION,
-      {
-        input: createInput,
-      }
-    );
+    const { data, errors } = await this.executeGraphQL<{ createBean: BeanRecord }>(graphql.CREATE_BEAN_MUTATION, {
+      input: createInput,
+    });
 
     if (errors && errors.length > 0) {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
@@ -217,7 +214,7 @@ export class BeansCliBackend implements BackendInterface {
       clearParent?: boolean;
       blocking?: string[];
       blockedBy?: string[];
-    }
+    },
   ): Promise<BeanRecord> {
     const updateInput: Record<string, unknown> = {
       status: updates.status,
@@ -239,13 +236,10 @@ export class BeansCliBackend implements BackendInterface {
       updateInput.addBlockedBy = updates.blockedBy;
     }
 
-    const { data, errors } = await this.executeGraphQL<{ updateBean: BeanRecord }>(
-      graphql.UPDATE_BEAN_MUTATION,
-      {
-        id: beanId,
-        input: updateInput,
-      }
-    );
+    const { data, errors } = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION, {
+      id: beanId,
+      input: updateInput,
+    });
 
     if (errors && errors.length > 0) {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
@@ -285,11 +279,14 @@ export class BeansCliBackend implements BackendInterface {
 
   async readOutputLog(options?: { lines?: number }): Promise<{ path: string; content: string; linesReturned: number }> {
     const outputPath = resolve(
-      process.env.BEANS_VSCODE_OUTPUT_LOG || join(this.workspaceRoot, '.vscode', 'logs', 'beans-output.log')
+      process.env.BEANS_VSCODE_OUTPUT_LOG || join(this.workspaceRoot, '.vscode', 'logs', 'beans-output.log'),
     );
 
     const isWithinWorkspace = isPathWithinRoot(this.workspaceRoot, outputPath);
-    const vscodeLogDir = process.env.BEANS_VSCODE_LOG_DIR || this.logDir ? resolve(process.env.BEANS_VSCODE_LOG_DIR || this.logDir || '') : undefined;
+    const vscodeLogDir =
+      process.env.BEANS_VSCODE_LOG_DIR || this.logDir
+        ? resolve(process.env.BEANS_VSCODE_LOG_DIR || this.logDir || '')
+        : undefined;
     const isWithinVscodeLogDir = vscodeLogDir ? isPathWithinRoot(vscodeLogDir, outputPath) : false;
 
     if (!isWithinWorkspace && !isWithinVscodeLogDir) {
@@ -336,7 +333,7 @@ export class BeansCliBackend implements BackendInterface {
   async createBeanFile(
     relativePath: string,
     content: string,
-    options?: { overwrite?: boolean }
+    options?: { overwrite?: boolean },
   ): Promise<{ path: string; bytes: number; created: boolean }> {
     const absolutePath = this.resolveBeanFilePath(relativePath);
     await mkdir(dirname(absolutePath), { recursive: true });

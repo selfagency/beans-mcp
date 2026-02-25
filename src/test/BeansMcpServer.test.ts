@@ -1,150 +1,148 @@
-import { describe, expect, it, vi } from "vitest";
-import { createBeansMcpServer, parseCliArgs } from "../server/BeansMcpServer";
-import type { BackendInterface } from "../server/backend";
-import type { BeanRecord } from "../types";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  MutableBackend,
+  createBeansMcpServer,
+  parseCliArgs,
+  resolveWorkspaceFromRoots,
+} from '../server/BeansMcpServer';
+import type { BackendInterface } from '../server/backend';
+import type { BeanRecord } from '../types';
 
-describe("parseCliArgs", () => {
-  it("should parse positional workspace root", () => {
-    const args = ["/path/to/workspace"];
+describe('parseCliArgs', () => {
+  it('should parse positional workspace root', () => {
+    const args = ['/path/to/workspace'];
     const result = parseCliArgs(args);
-    expect(result.workspaceRoot).toBe("/path/to/workspace");
+    expect(result.workspaceRoot).toBe('/path/to/workspace');
   });
 
-  it("should parse --workspace-root flag", () => {
-    const args = ["--workspace-root", "/custom/path"];
+  it('should parse --workspace-root flag', () => {
+    const args = ['--workspace-root', '/custom/path'];
     const result = parseCliArgs(args);
-    expect(result.workspaceRoot).toBe("/custom/path");
+    expect(result.workspaceRoot).toBe('/custom/path');
   });
 
-  it("should allow both positional and --workspace-root (flag overwrites positional)", () => {
-    const args = ["/positional", "--workspace-root", "/flag"];
+  it('should allow both positional and --workspace-root (flag overwrites positional)', () => {
+    const args = ['/positional', '--workspace-root', '/flag'];
     const result = parseCliArgs(args);
     // Flag comes after positional, so it overwrites
-    expect(result.workspaceRoot).toBe("/flag");
+    expect(result.workspaceRoot).toBe('/flag');
   });
 
-  it("should parse --cli-path flag", () => {
-    const args = ["--cli-path", "/usr/bin/beans"];
+  it('should parse --cli-path flag', () => {
+    const args = ['--cli-path', '/usr/bin/beans'];
     const result = parseCliArgs(args);
-    expect(result.cliPath).toBe("/usr/bin/beans");
+    expect(result.cliPath).toBe('/usr/bin/beans');
   });
 
-  it("should use default cli-path", () => {
+  it('should use default cli-path', () => {
     const args = [];
     const result = parseCliArgs(args);
-    expect(result.cliPath).toBe("beans");
+    expect(result.cliPath).toBe('beans');
   });
 
-  it("should parse --port flag", () => {
-    const args = ["--port", "8080"];
+  it('should parse --port flag', () => {
+    const args = ['--port', '8080'];
     const result = parseCliArgs(args);
     expect(result.port).toBe(8080);
   });
 
-  it("should use default port", () => {
+  it('should use default port', () => {
     const args = [];
     const result = parseCliArgs(args);
     expect(result.port).toBe(39173);
   });
 
-  it("should parse --log-dir flag", () => {
-    const args = ["--log-dir", "/var/log"];
+  it('should parse --log-dir flag', () => {
+    const args = ['--log-dir', '/var/log'];
     const result = parseCliArgs(args);
-    expect(result.logDir).toBe("/var/log");
+    expect(result.logDir).toBe('/var/log');
   });
 
-  it("should handle combined flags", () => {
-    const args = [
-      "/workspace",
-      "--cli-path",
-      "/usr/bin/beans",
-      "--port",
-      "9000",
-      "--log-dir",
-      "/tmp/logs",
-    ];
+  it('should handle combined flags', () => {
+    const args = ['/workspace', '--cli-path', '/usr/bin/beans', '--port', '9000', '--log-dir', '/tmp/logs'];
     const result = parseCliArgs(args);
-    expect(result.workspaceRoot).toBe("/workspace");
-    expect(result.cliPath).toBe("/usr/bin/beans");
+    expect(result.workspaceRoot).toBe('/workspace');
+    expect(result.cliPath).toBe('/usr/bin/beans');
     expect(result.port).toBe(9000);
-    expect(result.logDir).toBe("/tmp/logs");
+    expect(result.logDir).toBe('/tmp/logs');
   });
 
-  it("should reject suspicious CLI paths with shell metacharacters", () => {
-    const dangerous = ["--cli-path", "beans; rm -rf /"];
-    expect(() => parseCliArgs(dangerous)).toThrow("Invalid CLI path");
+  it('should reject suspicious CLI paths with shell metacharacters', () => {
+    const dangerous = ['--cli-path', 'beans; rm -rf /'];
+    expect(() => parseCliArgs(dangerous)).toThrow('Invalid CLI path');
   });
 
-  it("should reject CLI paths with pipes", () => {
-    const dangerous = ["--cli-path", "beans | cat /etc/passwd"];
-    expect(() => parseCliArgs(dangerous)).toThrow("Invalid CLI path");
+  it('should reject CLI paths with pipes', () => {
+    const dangerous = ['--cli-path', 'beans | cat /etc/passwd'];
+    expect(() => parseCliArgs(dangerous)).toThrow('Invalid CLI path');
   });
 
-  it("should reject CLI paths with redirects", () => {
-    const dangerous = ["--cli-path", "beans > /etc/passwd"];
-    expect(() => parseCliArgs(dangerous)).toThrow("Invalid CLI path");
+  it('should reject CLI paths with redirects', () => {
+    const dangerous = ['--cli-path', 'beans > /etc/passwd'];
+    expect(() => parseCliArgs(dangerous)).toThrow('Invalid CLI path');
   });
 
-  it("should reject CLI paths with backticks", () => {
-    const dangerous = ["--cli-path", "`rm -rf /`"];
-    expect(() => parseCliArgs(dangerous)).toThrow("Invalid CLI path");
+  it('should reject CLI paths with backticks', () => {
+    const dangerous = ['--cli-path', '`rm -rf /`'];
+    expect(() => parseCliArgs(dangerous)).toThrow('Invalid CLI path');
   });
 
-  it("should reject CLI paths with dollar expansion", () => {
-    const dangerous = ["--cli-path", "$(whoami)"];
-    expect(() => parseCliArgs(dangerous)).toThrow("Invalid CLI path");
+  it('should reject CLI paths with dollar expansion', () => {
+    const dangerous = ['--cli-path', '$(whoami)'];
+    expect(() => parseCliArgs(dangerous)).toThrow('Invalid CLI path');
   });
 
-  it("should allow safe CLI paths with slashes and dashes", () => {
-    const safe = ["--cli-path", "/usr/local/bin/beans-cli"];
+  it('should allow safe CLI paths with slashes and dashes', () => {
+    const safe = ['--cli-path', '/usr/local/bin/beans-cli'];
     const result = parseCliArgs(safe);
-    expect(result.cliPath).toBe("/usr/local/bin/beans-cli");
+    expect(result.cliPath).toBe('/usr/local/bin/beans-cli');
   });
 });
 
-describe("createBeansMcpServer", () => {
+describe('createBeansMcpServer', () => {
   const mockBackend: BackendInterface = {
     init: vi.fn(async () => ({ initialized: true })),
     list: vi.fn(async () => []),
-    create: vi.fn(async (input) => ({
-      id: "bean1",
-      slug: "bean1",
-      path: "bean1.md",
+    create: vi.fn(async input => ({
+      id: 'bean1',
+      slug: 'bean1',
+      path: 'bean1.md',
       title: input.title,
-      body: "",
-      status: input.status || "draft",
+      body: '',
+      status: input.status || 'draft',
       type: input.type,
     })),
     update: vi.fn(async () => ({
-      id: "bean1",
-      slug: "bean1",
-      path: "bean1.md",
-      title: "Updated",
-      body: "",
-      status: "todo",
-      type: "task",
+      id: 'bean1',
+      slug: 'bean1',
+      path: 'bean1.md',
+      title: 'Updated',
+      body: '',
+      status: 'todo',
+      type: 'task',
     })),
     delete: vi.fn(async () => ({ deleted: true })),
-    openConfig: vi.fn(async () => ({ configPath: "/config", content: "{}" })),
-    graphqlSchema: vi.fn(async () => "schema"),
+    openConfig: vi.fn(async () => ({ configPath: '/config', content: '{}' })),
+    graphqlSchema: vi.fn(async () => 'schema'),
     readOutputLog: vi.fn(async () => ({
-      path: "/log",
-      content: "log",
+      path: '/log',
+      content: 'log',
       linesReturned: 0,
     })),
-    readBeanFile: vi.fn(async () => ({ path: "/file", content: "content" })),
-    editBeanFile: vi.fn(async () => ({ path: "/file", bytes: 10 })),
+    readBeanFile: vi.fn(async () => ({ path: '/file', content: 'content' })),
+    editBeanFile: vi.fn(async () => ({ path: '/file', bytes: 10 })),
     createBeanFile: vi.fn(async () => ({
-      path: "/file",
+      path: '/file',
       bytes: 10,
       created: true,
     })),
-    deleteBeanFile: vi.fn(async () => ({ path: "/file", deleted: true })),
+    deleteBeanFile: vi.fn(async () => ({ path: '/file', deleted: true })),
   };
 
-  it("should create an MCP server instance", async () => {
+  it('should create an MCP server instance', async () => {
     const { server, backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
@@ -152,58 +150,58 @@ describe("createBeansMcpServer", () => {
     expect(backend).toBeDefined();
   });
 
-  it("should use provided backend implementation", async () => {
+  it('should use provided backend implementation', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     expect(backend).toBe(mockBackend);
   });
 
-  it("should set server name from options", async () => {
+  it('should set server name from options', async () => {
     const { server } = await createBeansMcpServer({
-      workspaceRoot: "/test",
-      name: "custom-server",
+      workspaceRoot: '/test',
+      name: 'custom-server',
       backend: mockBackend,
     });
 
     expect(server).toBeDefined();
   });
 
-  it("should set server version from options", async () => {
+  it('should set server version from options', async () => {
     const { server } = await createBeansMcpServer({
-      workspaceRoot: "/test",
-      version: "2.0.0",
+      workspaceRoot: '/test',
+      version: '2.0.0',
       backend: mockBackend,
     });
 
     expect(server).toBeDefined();
   });
 
-  it("should accept logDir option", async () => {
+  it('should accept logDir option', async () => {
     const { server } = await createBeansMcpServer({
-      workspaceRoot: "/test",
-      logDir: "/var/log",
+      workspaceRoot: '/test',
+      logDir: '/var/log',
       backend: mockBackend,
     });
 
     expect(server).toBeDefined();
   });
 
-  it("should accept cliPath option", async () => {
+  it('should accept cliPath option', async () => {
     const { server: _server } = await createBeansMcpServer({
-      workspaceRoot: "/test",
-      cliPath: "/usr/bin/beans",
+      workspaceRoot: '/test',
+      cliPath: '/usr/bin/beans',
       backend: mockBackend,
     });
 
     expect(_server).toBeDefined();
   });
 
-  it("should handle empty list operation", async () => {
+  it('should handle empty list operation', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
@@ -212,175 +210,305 @@ describe("createBeansMcpServer", () => {
     expect(result).toEqual([]);
   });
 
-  it("should handle list with beans", async () => {
+  it('should handle list with beans', async () => {
     const mockBeans: BeanRecord[] = [
       {
-        id: "bean1",
-        slug: "bean1",
-        path: "bean1.md",
-        title: "Test Bean",
-        body: "Content",
-        status: "todo",
-        type: "task",
+        id: 'bean1',
+        slug: 'bean1',
+        path: 'bean1.md',
+        title: 'Test Bean',
+        body: 'Content',
+        status: 'todo',
+        type: 'task',
       },
     ];
 
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     (mockBackend.list as any).mockImplementationOnce(async () => mockBeans);
     const result = await backend.list();
     expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("bean1");
+    expect(result[0].id).toBe('bean1');
   });
 
-  it("should call backend init with prefix", async () => {
+  it('should call backend init with prefix', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    await backend.init("TEST");
+    await backend.init('TEST');
     expect((mockBackend.init as any).mock.calls.length).toBeGreaterThan(0);
   });
 
-  it("should create beans with required fields", async () => {
+  it('should create beans with required fields', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     const result = await backend.create({
-      title: "New Bean",
-      type: "task",
+      title: 'New Bean',
+      type: 'task',
     });
 
-    expect(result.id).toBe("bean1");
-    expect(result.title).toBe("New Bean");
+    expect(result.id).toBe('bean1');
+    expect(result.title).toBe('New Bean');
   });
 
-  it("should create beans with optional status", async () => {
+  it('should create beans with optional status', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     await backend.create({
-      title: "New Bean",
-      type: "feature",
-      status: "in-progress",
+      title: 'New Bean',
+      type: 'feature',
+      status: 'in-progress',
     });
 
     expect((mockBackend.create as any).mock.calls.length).toBeGreaterThan(0);
   });
 
-  it("should create beans with optional priority", async () => {
+  it('should create beans with optional priority', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     await backend.create({
-      title: "New Bean",
-      type: "bug",
-      priority: "high",
+      title: 'New Bean',
+      type: 'bug',
+      priority: 'high',
     });
 
     expect((mockBackend.create as any).mock.calls.length).toBeGreaterThan(0);
   });
 
-  it("should handle bean updates", async () => {
+  it('should handle bean updates', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.update("bean1", {
-      status: "completed",
+    const result = await backend.update('bean1', {
+      status: 'completed',
     });
 
-    expect(result.status).toBe("todo");
+    expect(result.status).toBe('todo');
   });
 
-  it("should delete beans", async () => {
+  it('should delete beans', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.delete("bean1");
+    const result = await backend.delete('bean1');
     expect(result).toEqual({ deleted: true });
   });
 
-  it("should open config", async () => {
+  it('should open config', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     const result = await backend.openConfig();
-    expect(result).toEqual({ configPath: "/config", content: "{}" });
+    expect(result).toEqual({ configPath: '/config', content: '{}' });
   });
 
-  it("should get GraphQL schema", async () => {
+  it('should get GraphQL schema', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     const result = await backend.graphqlSchema();
-    expect(result).toBe("schema");
+    expect(result).toBe('schema');
   });
 
-  it("should read output log", async () => {
+  it('should read output log', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
     const result = await backend.readOutputLog();
-    expect(result.path).toBe("/log");
+    expect(result.path).toBe('/log');
   });
 
-  it("should read bean file", async () => {
+  it('should read bean file', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.readBeanFile("test.md");
-    expect(result.content).toBe("content");
+    const result = await backend.readBeanFile('test.md');
+    expect(result.content).toBe('content');
   });
 
-  it("should edit bean file", async () => {
+  it('should edit bean file', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.editBeanFile("test.md", "new content");
+    const result = await backend.editBeanFile('test.md', 'new content');
     expect(result.bytes).toBe(10);
   });
 
-  it("should create bean file", async () => {
+  it('should create bean file', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.createBeanFile("test.md", "content");
+    const result = await backend.createBeanFile('test.md', 'content');
     expect(result.created).toBe(true);
   });
 
-  it("should delete bean file", async () => {
+  it('should delete bean file', async () => {
     const { backend } = await createBeansMcpServer({
-      workspaceRoot: "/test",
+      workspaceRoot: '/test',
       backend: mockBackend,
     });
 
-    const result = await backend.deleteBeanFile("test.md");
-    expect(result.path).toBe("/file");
+    const result = await backend.deleteBeanFile('test.md');
+    expect(result.path).toBe('/file');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MutableBackend
+// ---------------------------------------------------------------------------
+
+describe('MutableBackend', () => {
+  function makeInner(overrides: Partial<BackendInterface> = {}): BackendInterface {
+    return {
+      init: vi.fn(async () => ({ initialized: true })),
+      list: vi.fn(async () => []),
+      create: vi.fn(async input => ({
+        id: 'b1',
+        slug: 'b1',
+        path: 'b1.md',
+        title: input.title,
+        body: '',
+        status: 'draft',
+        type: input.type,
+      })),
+      update: vi.fn(async () => ({
+        id: 'b1',
+        slug: 'b1',
+        path: 'b1.md',
+        title: 'T',
+        body: '',
+        status: 'todo',
+        type: 'task',
+      })),
+      delete: vi.fn(async () => ({ deleted: true })),
+      openConfig: vi.fn(async () => ({ configPath: '/cfg', content: '{}' })),
+      graphqlSchema: vi.fn(async () => 'schema'),
+      readOutputLog: vi.fn(async () => ({ path: '/log', content: 'log', linesReturned: 0 })),
+      readBeanFile: vi.fn(async () => ({ path: '/f', content: 'c' })),
+      editBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1 })),
+      createBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1, created: true })),
+      deleteBeanFile: vi.fn(async () => ({ path: '/f', deleted: true })),
+      ...overrides,
+    };
+  }
+
+  it('delegates every method to the inner backend', async () => {
+    const inner = makeInner();
+    const m = new MutableBackend(inner);
+
+    await m.init('pfx');
+    expect(inner.init).toHaveBeenCalledWith('pfx');
+
+    await m.list({ status: ['todo'] });
+    expect(inner.list).toHaveBeenCalledWith({ status: ['todo'] });
+
+    await m.create({ title: 'T', type: 'task' });
+    expect(inner.create).toHaveBeenCalled();
+
+    await m.update('b1', { status: 'done' });
+    expect(inner.update).toHaveBeenCalledWith('b1', { status: 'done' });
+
+    await m.delete('b1');
+    expect(inner.delete).toHaveBeenCalledWith('b1');
+
+    await m.openConfig();
+    expect(inner.openConfig).toHaveBeenCalled();
+
+    await m.graphqlSchema();
+    expect(inner.graphqlSchema).toHaveBeenCalled();
+
+    await m.readOutputLog({ lines: 5 });
+    expect(inner.readOutputLog).toHaveBeenCalledWith({ lines: 5 });
+
+    await m.readBeanFile('a.md');
+    expect(inner.readBeanFile).toHaveBeenCalledWith('a.md');
+
+    await m.editBeanFile('a.md', 'content');
+    expect(inner.editBeanFile).toHaveBeenCalledWith('a.md', 'content');
+
+    await m.createBeanFile('a.md', 'content', { overwrite: true });
+    expect(inner.createBeanFile).toHaveBeenCalledWith('a.md', 'content', { overwrite: true });
+
+    await m.deleteBeanFile('a.md');
+    expect(inner.deleteBeanFile).toHaveBeenCalledWith('a.md');
+  });
+
+  it('setInner swaps the delegate so subsequent calls go to the new backend', async () => {
+    const inner1 = makeInner();
+    const inner2 = makeInner();
+    const m = new MutableBackend(inner1);
+
+    await m.list();
+    expect(inner1.list).toHaveBeenCalledTimes(1);
+    expect(inner2.list).not.toHaveBeenCalled();
+
+    m.setInner(inner2);
+    await m.list();
+    expect(inner1.list).toHaveBeenCalledTimes(1); // not called again
+    expect(inner2.list).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveWorkspaceFromRoots
+// ---------------------------------------------------------------------------
+
+describe('resolveWorkspaceFromRoots', () => {
+  function mockServer(listRootsImpl: () => Promise<{ roots: { uri: string }[] }>): McpServer {
+    return { server: { listRoots: listRootsImpl } } as unknown as McpServer;
+  }
+
+  it('returns the pathname of the first file:// root', async () => {
+    const server = mockServer(async () => ({ roots: [{ uri: 'file:///my/project' }] }));
+    expect(await resolveWorkspaceFromRoots(server)).toBe('/my/project');
+  });
+
+  it('skips non-file:// URIs and returns the first file:// one', async () => {
+    const server = mockServer(async () => ({
+      roots: [{ uri: 'https://example.com' }, { uri: 'file:///local/path' }],
+    }));
+    expect(await resolveWorkspaceFromRoots(server)).toBe('/local/path');
+  });
+
+  it('returns null when no file:// roots are present', async () => {
+    const server = mockServer(async () => ({ roots: [] }));
+    expect(await resolveWorkspaceFromRoots(server)).toBeNull();
+  });
+
+  it('returns null when listRoots throws', async () => {
+    const server = mockServer(async () => {
+      throw new Error('no roots capability');
+    });
+    expect(await resolveWorkspaceFromRoots(server)).toBeNull();
   });
 });

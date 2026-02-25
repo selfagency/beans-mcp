@@ -76,8 +76,8 @@ export async function handleQueryOperation(
     tags?: string[] | null;
     writeToWorkspaceInstructions?: boolean;
     includeClosed?: boolean;
-  }
-): Promise<{ content: Array<{ type: 'text'; text: string }>; structuredContent: any }> {
+  },
+): Promise<{ content: Array<{ type: 'text'; text: string }>; structuredContent: Record<string, unknown> }> {
   const { operation, mode, statuses, types, search, tags, writeToWorkspaceInstructions, includeClosed } = params;
 
   if (operation === 'llm_context') {
