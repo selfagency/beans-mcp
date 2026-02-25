@@ -44,6 +44,7 @@
     "lint": "oxlint",
     "postbuild": "node ./scripts/write-dist-package.js",
     "prepare": "husky",
+    "release": "zx ./scripts/release.mjs",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test": "vitest run",
@@ -64,7 +65,8 @@
     "tsup": "8.5.1",
     "typescript": "^5.9.3",
     "vitest": "4.0.18",
-    "zod": "4.3.6"
+    "zod": "4.3.6",
+    "zx": "^8.8.5"
   },
   "engines": {
     "node": ">=18"
