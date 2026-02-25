@@ -6,7 +6,6 @@ import {
   createHandler,
   editHandler,
   reopenHandler,
-  updateHandler,
   deleteHandler,
   queryHandler,
   beanFileHandler,
@@ -102,22 +101,26 @@ describe('Handlers (unit)', () => {
 
   it('beanFileHandler routes operations', async () => {
     const backend = makeBackend();
-    const read = await beanFileHandler(backend)({ operation: 'read', path: 'p' });
+    const _read = await beanFileHandler(backend)({ operation: 'read', path: 'p' });
     expect(backend.readBeanFile).toHaveBeenCalledWith('p');
-    const edit = await beanFileHandler(backend)({ operation: 'edit', path: 'p', content: 'c' });
+    const _edit = await beanFileHandler(backend)({ operation: 'edit', path: 'p', content: 'c' });
     expect(backend.editBeanFile).toHaveBeenCalledWith('p', 'c');
-    const create = await beanFileHandler(backend)({ operation: 'create', path: 'p', content: 'c', overwrite: true });
+    const _create = await beanFileHandler(backend)({ operation: 'create', path: 'p', content: 'c', overwrite: true });
     expect(backend.createBeanFile).toHaveBeenCalled();
-    const del = await beanFileHandler(backend)({ operation: 'delete', path: 'p' });
+    const _del = await beanFileHandler(backend)({ operation: 'delete', path: 'p' });
     expect(backend.deleteBeanFile).toHaveBeenCalledWith('p');
   });
 
   it('outputHandler read and show', async () => {
     const backend = makeBackend();
-    const r = await outputHandler(backend)({ operation: 'read', lines: 10 });
+    const _r = await outputHandler(backend)({ operation: 'read', lines: 10 });
     expect(backend.readOutputLog).toHaveBeenCalled();
     const s = await outputHandler(backend)({ operation: 'show' });
-    expect(s.structuredContent.message).toMatch(/When using VS Code UI/);
+    if ('message' in s.structuredContent) {
+      expect(s.structuredContent.message).toMatch(/When using VS Code UI/);
+    } else {
+      throw new Error('expected message in structuredContent');
+    }
   });
 
   it('queryHandler delegates to handleQueryOperation', async () => {
