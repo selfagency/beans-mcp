@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-02-25
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/commits/v0.1.0
+
+
 Initial public release. Extracted and substantially reworked from the
 [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode)
 VS Code extension's embedded MCP server into a standalone, independently
