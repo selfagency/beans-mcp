@@ -35,6 +35,7 @@ export interface BackendInterface {
       clearParent?: boolean;
       blocking?: string[];
       blockedBy?: string[];
+      body?: string;
     },
   ): Promise<BeanRecord>;
   delete(beanId: string): Promise<Record<string, unknown>>;
@@ -214,6 +215,7 @@ export class BeansCliBackend implements BackendInterface {
       clearParent?: boolean;
       blocking?: string[];
       blockedBy?: string[];
+      body?: string;
     },
   ): Promise<BeanRecord> {
     const updateInput: Record<string, unknown> = {
@@ -234,6 +236,10 @@ export class BeansCliBackend implements BackendInterface {
 
     if (updates.blockedBy) {
       updateInput.addBlockedBy = updates.blockedBy;
+    }
+
+    if (updates.body !== undefined) {
+      updateInput.body = updates.body;
     }
 
     const { data, errors } = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION, {
