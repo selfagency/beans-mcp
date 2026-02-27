@@ -10,6 +10,10 @@ import {
   MAX_TITLE_LENGTH,
 } from '../types';
 import { makeTextAndStructured } from '../utils';
+// Log package version on startup to help diagnose runtime package mismatches
+// Note: resolveJsonModule is enabled in tsconfig, so we can import package.json safely.
+// Always log to stderr to avoid interfering with MCP stdio transport on stdout.
+import pkgJson from '../../package.json' assert { type: 'json' };
 import type { BackendInterface } from './backend';
 
 export { sortBeans };
@@ -577,6 +581,18 @@ export async function startBeansMcpServer(
   process.env.BEANS_VSCODE_MCP_PORT = String(port);
   process.env.BEANS_MCP_PORT = String(port);
 
+  // Emit a single-line startup banner with package version and key settings.
+  try {
+    const version = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
+    const workspaceLabel = workspaceExplicit ? workspaceRoot : '(auto from roots)';
+    // stderr only – stdout is reserved for JSON-RPC traffic
+    console.error(
+      `[beans-mcp] v${version} starting (port=${port}, workspace=${workspaceLabel}, cli=${cliPath}, logDir=${logDir})`,
+    );
+  } catch {
+    // Best-effort only; never fail startup on logging
+  }
+
   // Use a mutable delegate so we can hot-swap the workspace after roots discovery
   // without re-registering the MCP tools.
   const mutable = new MutableBackend(new BeansCliBackend(workspaceRoot, cliPath, logDir));
@@ -598,6 +614,10 @@ export async function startBeansMcpServer(
     const rootPath = await resolver(server);
     if (rootPath) {
       mutable.setInner(new BeansCliBackend(rootPath, cliPath));
+      // Log the resolved workspace for traceability (stderr to avoid stdout noise)
+      try {
+        console.error(`[beans-mcp] workspace resolved from roots: ${rootPath}`);
+      } catch {}
     }
   }
 }
