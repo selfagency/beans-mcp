@@ -241,13 +241,29 @@ async function main() {
   });
   const releaseNotes = notesResp.data.body?.trim() || '- No notable changes.';
 
-  // --- Update package.json --------------------------------------------------
 
+  // --- Update package.json --------------------------------------------------
   console.log(`🧩 Updating package.json to ${version}...`);
   const pkgPath = resolve(ROOT, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   pkg.version = version;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+  // --- Update server.json ---------------------------------------------------
+  const serverJsonPath = resolve(ROOT, 'server.json');
+  let serverJson;
+  try {
+    serverJson = JSON.parse(readFileSync(serverJsonPath, 'utf8'));
+    serverJson.version = version;
+    if (Array.isArray(serverJson.packages) && serverJson.packages.length > 0) {
+      serverJson.packages[0].version = version;
+    }
+    writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + '\n');
+    console.log(`🧩 Updated server.json to ${version}...`);
+  } catch (e) {
+    console.error('❌ Failed to update server.json:', e);
+    process.exit(1);
+  }
 
   // --- Update CHANGELOG.md --------------------------------------------------
 

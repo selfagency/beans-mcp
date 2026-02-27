@@ -9,7 +9,7 @@ async function main() {
   const rootPkgPath = resolve(__dirname, '..', 'package.json');
   const outDir = resolve(__dirname, '..', 'dist');
   const raw = await readFile(rootPkgPath, 'utf8');
-  const {name, version, description, keywords, homepage, bugs, issues, repository, license, author} = JSON.parse(raw);
+  const {name, version, description, keywords, homepage, bugs, issues, repository, license, author, mcpName} = JSON.parse(raw);
 
   const distPkg = {
     name,
@@ -34,7 +34,8 @@ async function main() {
         import: './index.js',
         require: './index.cjs'
       }
-    }
+    },
+    mcpName
   };
 
   await mkdir(outDir, { recursive: true });
