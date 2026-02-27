@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-02-27
+
+## What's Changed
+* feat: support body updates and de-duplicate MCP results by @selfagency in https://github.com/selfagency/beans-mcp/pull/1
+
+## New Contributors
+* @selfagency made their first contribution in https://github.com/selfagency/beans-mcp/pull/1
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.1...v0.1.2
+
+_Source: changes from v0.1.1 to v0.1.2._
+
+
 ## [0.1.1] - 2026-02-25
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.0...v0.1.1
