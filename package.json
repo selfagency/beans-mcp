@@ -16,6 +16,7 @@
     "type": "git",
     "url": "git+https://github.com/selfagency/beans-mcp.git"
   },
+  "mcpName": "io.github.selfagency/beans-mcp",
   "keywords": [
     "beans",
     "mcp",
