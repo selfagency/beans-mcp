@@ -13,8 +13,8 @@ export function isPathWithinRoot(root: string, target: string): boolean {
 }
 
 export function makeTextAndStructured<T extends Record<string, unknown>>(value: T) {
+  // Return JSON in text content only to avoid duplicate rendering in some clients.
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
-    structuredContent: value,
   };
 }
