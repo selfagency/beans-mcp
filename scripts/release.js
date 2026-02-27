@@ -3,6 +3,7 @@
 import { Octokit } from '@octokit/rest';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
@@ -129,11 +130,22 @@ async function main() {
   }
   gitCmd = resolvedGit;
 
-  // Check npm credentials.
+  // Ensure npm uses the user's ~/.npmrc (tokens) and the public npm registry.
+  // Some CI shells or tool integrations start without HOME/USERCONFIG, which causes
+  // `npm whoami` to prompt for interactive login even when a token exists.
+  process.env.NPM_CONFIG_USERCONFIG ||= resolve(homedir(), '.npmrc');
+  const NPM_REGISTRY = process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/';
+
+  // Check npm credentials against the intended registry (non-interactive).
   try {
-    await $`npm whoami`;
+    await $`npm whoami --registry=${NPM_REGISTRY}`;
   } catch {
-    console.error('❌ Not logged in to npm. Run: npm login');
+    console.error(`❌ Not logged in to npm (registry: ${NPM_REGISTRY}).`);
+    console.error('   Tips:');
+    console.error(`   - Ensure your token is in ${process.env.NPM_CONFIG_USERCONFIG}`);
+    console.error("   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>");
+    console.error('   - Or export NPM_TOKEN in your environment before running the release script');
+    console.error('   - To log in interactively: npm login --registry=https://registry.npmjs.org/');
     process.exit(1);
   }
 
@@ -339,7 +351,11 @@ async function main() {
   const distTag = version.includes('-') ? 'next' : 'latest';
   console.log(`🚀 Publishing ${tag} to npm (dist-tag: ${distTag})...`);
   $.verbose = true;
-  await $`npm publish ./dist --tag ${distTag}`;
+  // For scoped public packages, --access public is required on first publish; harmless on subsequent publishes.
+  const accessFlag = (JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).name || '').startsWith('@')
+    ? ['--access', 'public']
+    : [];
+  await $`npm publish ./dist --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag}`;
   $.verbose = false;
   console.log(`✅ Published ${tag} to npm.`);
 }
