@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-02-27
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.2...v0.1.3
+
+_Source: changes from v0.1.2 to v0.1.3._
+
+
 ## [0.1.2] - 2026-02-27
 
 ## What's Changed
