@@ -97,6 +97,7 @@ export function updateHandler(backend: BackendInterface) {
     clearParent?: boolean;
     blocking?: string[];
     blockedBy?: string[];
+    body?: string;
   }) =>
     makeTextAndStructured({
       bean: await backend.update(input.beanId, {
@@ -107,6 +108,7 @@ export function updateHandler(backend: BackendInterface) {
         clearParent: input.clearParent,
         blocking: input.blocking,
         blockedBy: input.blockedBy,
+        body: input.body,
       }),
     });
 }
@@ -293,6 +295,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         clearParent: z.boolean().optional(),
         blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
         blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+        body: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
       }),
       annotations: {
         readOnlyHint: false,

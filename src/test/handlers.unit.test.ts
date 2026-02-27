@@ -9,6 +9,7 @@ import {
   outputHandler,
   queryHandler,
   reopenHandler,
+  updateHandler,
   viewHandler,
 } from '../server/BeansMcpServer';
 
@@ -75,27 +76,45 @@ describe('Handlers (unit)', () => {
     const backend = makeBackend();
     const res = await initHandler(backend)({ prefix: 'pfx' });
     expect(backend.init).toHaveBeenCalledWith('pfx');
-    expect(res.structuredContent).toBeDefined();
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data).toBeDefined();
   });
 
   it('viewHandler returns bean structured content', async () => {
     const backend = makeBackend();
     const res = await viewHandler(backend)({ beanId: 'b1' });
-    expect(res.structuredContent.bean.id).toBe('b1');
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.bean.id).toBe('b1');
   });
 
   it('createHandler delegates to backend.create', async () => {
     const backend = makeBackend();
     const res = await createHandler(backend)({ title: 'T', type: 't' });
     expect(backend.create).toHaveBeenCalled();
-    expect(res.structuredContent.bean.id).toBe('new');
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.bean.id).toBe('new');
   });
 
   it('editHandler delegates to backend.update', async () => {
     const backend = makeBackend();
     const res = await editHandler(backend)({ beanId: 'b1', status: 'todo' });
     expect(backend.update).toHaveBeenCalledWith('b1', { status: 'todo' });
-    expect(res.structuredContent.bean.status).toBe('todo');
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.bean.status).toBe('todo');
+  });
+
+  it('updateHandler delegates body updates to backend.update', async () => {
+    const backend = makeBackend({
+      update: vi.fn(async (id: string, updates: any) => ({
+        ...sampleBean,
+        id,
+        ...updates,
+      })),
+    });
+    const res = await updateHandler(backend)({ beanId: 'b1', body: 'new body text' } as any);
+    expect(backend.update).toHaveBeenCalledWith('b1', expect.objectContaining({ body: 'new body text' }));
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.bean.body).toBe('new body text');
   });
 
   it('reopenHandler throws if current status mismatches', async () => {
@@ -117,7 +136,8 @@ describe('Handlers (unit)', () => {
       targetStatus: 'todo',
     });
     expect(backend.update).toHaveBeenCalled();
-    expect(res.structuredContent.bean.status).toBe('todo');
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.bean.status).toBe('todo');
   });
 
   it('deleteHandler enforces draft/scrapped unless force', async () => {
@@ -168,11 +188,8 @@ describe('Handlers (unit)', () => {
     const _r = await outputHandler(backend)({ operation: 'read', lines: 10 });
     expect(backend.readOutputLog).toHaveBeenCalled();
     const s = await outputHandler(backend)({ operation: 'show' });
-    if ('message' in s.structuredContent) {
-      expect(s.structuredContent.message).toMatch(/When using VS Code UI/);
-    } else {
-      throw new Error('expected message in structuredContent');
-    }
+    const data = JSON.parse(s.content?.[0]?.text ?? '{}');
+    expect(data.message).toMatch(/When using VS Code UI/);
   });
 
   it('queryHandler delegates to handleQueryOperation', async () => {
