@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MutableBackend,
   createBeansMcpServer,
+  extractVersionFromOutput,
   parseCliArgs,
   resolveWorkspaceFromRoots,
 } from '../server/BeansMcpServer';
@@ -97,6 +98,25 @@ describe('parseCliArgs', () => {
     const safe = ['--cli-path', '/usr/local/bin/beans-cli'];
     const result = parseCliArgs(safe);
     expect(result.cliPath).toBe('/usr/local/bin/beans-cli');
+  });
+});
+
+describe('extractVersionFromOutput', () => {
+  it('extracts plain semver', () => {
+    expect(extractVersionFromOutput('0.4.2')).toBe('0.4.2');
+  });
+
+  it('extracts version prefixed by v', () => {
+    expect(extractVersionFromOutput('v0.4.2')).toBe('0.4.2');
+  });
+
+  it('extracts version from descriptive CLI output', () => {
+    expect(extractVersionFromOutput('beans version v0.4.2 (commit abc123)')).toBe('0.4.2');
+  });
+
+  it('returns null for empty or non-version output', () => {
+    expect(extractVersionFromOutput('')).toBeNull();
+    expect(extractVersionFromOutput('beans version unknown')).toBeNull();
   });
 });
 

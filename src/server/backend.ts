@@ -36,10 +36,15 @@ export interface BackendInterface {
       blocking?: string[];
       blockedBy?: string[];
       body?: string;
+      bodyAppend?: string;
+      bodyReplace?: Array<{ old: string; new: string }>;
+      ifMatch?: string;
     },
   ): Promise<BeanRecord>;
   delete(beanId: string): Promise<Record<string, unknown>>;
   openConfig(): Promise<{ configPath: string; content: string }>;
+  primeInstructions?(): Promise<string>;
+  writeInstructions?(instructions: string): Promise<string | null>;
   graphqlSchema(): Promise<string>;
   readOutputLog(options?: { lines?: number }): Promise<{ path: string; content: string; linesReturned: number }>;
   readBeanFile(relativePath: string): Promise<{ path: string; content: string }>;
@@ -216,6 +221,9 @@ export class BeansCliBackend implements BackendInterface {
       blocking?: string[];
       blockedBy?: string[];
       body?: string;
+      bodyAppend?: string;
+      bodyReplace?: Array<{ old: string; new: string }>;
+      ifMatch?: string;
     },
   ): Promise<BeanRecord> {
     const updateInput: Record<string, unknown> = {
@@ -242,10 +250,56 @@ export class BeansCliBackend implements BackendInterface {
       updateInput.body = updates.body;
     }
 
-    const { data, errors } = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION, {
-      id: beanId,
-      input: updateInput,
-    });
+    const bodyMod: { append?: string; replace?: Array<{ old: string; new: string }> } = {};
+    if (updates.bodyAppend !== undefined) {
+      bodyMod.append = updates.bodyAppend;
+    }
+    if (Array.isArray(updates.bodyReplace) && updates.bodyReplace.length > 0) {
+      bodyMod.replace = updates.bodyReplace;
+    }
+    if (Object.keys(bodyMod).length > 0) {
+      updateInput.bodyMod = bodyMod;
+    }
+
+    let data: { updateBean: BeanRecord };
+    let errors: GraphQLError[] | undefined;
+
+    if (updates.ifMatch) {
+      try {
+        const res = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION_WITH_IF_MATCH, {
+          id: beanId,
+          input: updateInput,
+          ifMatch: updates.ifMatch,
+        });
+        data = res.data;
+        errors = res.errors;
+      } catch (error) {
+        const message = (error as Error).message || '';
+        const unsupportedIfMatch =
+          /unknown argument.*ifMatch|unknown field.*ifMatch|ifMatch.*not defined|field .*updateBean.* argument .*ifMatch/i.test(
+            message,
+          );
+
+        if (!unsupportedIfMatch) {
+          throw error;
+        }
+
+        // Best-effort compatibility fallback for older Beans CLI/schema versions.
+        const fallback = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION, {
+          id: beanId,
+          input: updateInput,
+        });
+        data = fallback.data;
+        errors = fallback.errors;
+      }
+    } else {
+      const res = await this.executeGraphQL<{ updateBean: BeanRecord }>(graphql.UPDATE_BEAN_MUTATION, {
+        id: beanId,
+        input: updateInput,
+      });
+      data = res.data;
+      errors = res.errors;
+    }
 
     if (errors && errors.length > 0) {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
@@ -270,6 +324,24 @@ export class BeansCliBackend implements BackendInterface {
     const configPath = join(this.workspaceRoot, '.beans.yml');
     const content = await readFile(configPath, 'utf8');
     return { configPath, content };
+  }
+
+  async primeInstructions(): Promise<string> {
+    const { stdout } = await execFileAsync(this.cliPath, ['prime'], {
+      cwd: this.workspaceRoot,
+      env: this.getSafeEnv(),
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30000,
+    });
+
+    return stdout.trim();
+  }
+
+  async writeInstructions(instructions: string): Promise<string> {
+    const instructionsPath = join(this.workspaceRoot, '.github', 'instructions', 'beans-prime.instructions.md');
+    await mkdir(dirname(instructionsPath), { recursive: true });
+    await writeFile(instructionsPath, instructions, 'utf8');
+    return instructionsPath;
   }
 
   async graphqlSchema(): Promise<string> {
