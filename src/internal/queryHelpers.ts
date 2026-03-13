@@ -2,6 +2,7 @@ import { BeanRecord, SortMode } from '../types';
 
 export type QueryBackend = {
   graphqlSchema?: () => Promise<string>;
+  primeInstructions?: () => Promise<string>;
   writeInstructions?: (instructions: string) => Promise<string | null>;
   openConfig?: () => Promise<Record<string, unknown>>;
   list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]>;
@@ -82,18 +83,26 @@ export async function handleQueryOperation(
 
   if (operation === 'llm_context') {
     const graphqlSchema = typeof backend.graphqlSchema === 'function' ? await backend.graphqlSchema() : '';
+    let generatedInstructions = '';
+    if (typeof backend.primeInstructions === 'function') {
+      try {
+        generatedInstructions = await backend.primeInstructions();
+      } catch {
+        generatedInstructions = '';
+      }
+    }
     const instructionsPath =
       writeToWorkspaceInstructions && typeof backend.writeInstructions === 'function'
-        ? await backend.writeInstructions('')
+        ? await backend.writeInstructions(generatedInstructions)
         : null;
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ graphqlSchema, generatedInstructions: '', instructionsPath }, null, 2),
+          text: JSON.stringify({ graphqlSchema, generatedInstructions, instructionsPath }, null, 2),
         },
       ],
-      structuredContent: { graphqlSchema, generatedInstructions: '', instructionsPath },
+      structuredContent: { graphqlSchema, generatedInstructions, instructionsPath },
     };
   }
 
@@ -142,6 +151,35 @@ export async function handleQueryOperation(
     return {
       content: [{ type: 'text', text: JSON.stringify({ query: search, count: beans.length, beans }, null, 2) }],
       structuredContent: { query: search, count: beans.length, beans },
+    };
+  }
+
+  if (operation === 'ready') {
+    const beans = await backend.list({ status: normalizedStatuses, type: normalizedTypes, search });
+    const byId = new Map(beans.map(bean => [bean.id, bean]));
+
+    const readyBeans = beans.filter((bean: BeanRecord) => {
+      if (bean.status !== 'todo') {
+        return false;
+      }
+
+      const blockedBy = bean.blockedByIds || [];
+      if (blockedBy.length === 0) {
+        return true;
+      }
+
+      return blockedBy.every(blockerId => {
+        const blocker = byId.get(blockerId);
+        if (!blocker) {
+          return false;
+        }
+        return blocker.status === 'completed' || blocker.status === 'scrapped';
+      });
+    });
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ count: readyBeans.length, beans: readyBeans }, null, 2) }],
+      structuredContent: { count: readyBeans.length, beans: readyBeans },
     };
   }
 
