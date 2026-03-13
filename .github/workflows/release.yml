@@ -232,4 +232,3 @@ jobs:
           prerelease: ${{ contains(needs.detect-tag.outputs.release_tag, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

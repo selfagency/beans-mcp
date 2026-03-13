@@ -318,6 +318,7 @@ describe('handleQueryOperation', () => {
   const mockBackend = {
     list: vi.fn(async () => mockBeans),
     graphqlSchema: vi.fn(async () => 'schema'),
+    primeInstructions: vi.fn(async () => 'PRIME-INSTRUCTIONS'),
     openConfig: vi.fn(async () => ({ configPath: '/path/to/config' })),
     writeInstructions: vi.fn(async () => '/path/to/instructions'),
   };
@@ -328,6 +329,7 @@ describe('handleQueryOperation', () => {
     });
     expect(result.content[0].type).toBe('text');
     expect(result.structuredContent.graphqlSchema).toBe('schema');
+    expect(result.structuredContent.generatedInstructions).toBe('PRIME-INSTRUCTIONS');
   });
 
   it('should handle llm_context with writeInstructions', async () => {
@@ -336,6 +338,7 @@ describe('handleQueryOperation', () => {
       writeToWorkspaceInstructions: true,
     });
     expect(result.structuredContent.instructionsPath).toBe('/path/to/instructions');
+    expect(mockBackend.writeInstructions).toHaveBeenCalledWith('PRIME-INSTRUCTIONS');
   });
 
   it('should handle open_config operation', async () => {
@@ -520,5 +523,67 @@ describe('handleQueryOperation', () => {
       search: 'task',
     });
     expect((result.structuredContent.beans as BeanRecord[]).length).toBeGreaterThan(0);
+  });
+
+  it('should return only actionable todo beans for ready operation', async () => {
+    const readyBeans: BeanRecord[] = [
+      {
+        id: 'todo-ready',
+        slug: 'todo-ready',
+        path: 'todo-ready.md',
+        title: 'Ready',
+        body: '',
+        status: 'todo',
+        type: 'task',
+        blockedByIds: ['completed-blocker'],
+      },
+      {
+        id: 'todo-blocked',
+        slug: 'todo-blocked',
+        path: 'todo-blocked.md',
+        title: 'Blocked',
+        body: '',
+        status: 'todo',
+        type: 'task',
+        blockedByIds: ['active-blocker'],
+      },
+      {
+        id: 'in-progress',
+        slug: 'in-progress',
+        path: 'in-progress.md',
+        title: 'WIP',
+        body: '',
+        status: 'in-progress',
+        type: 'task',
+      },
+      {
+        id: 'completed-blocker',
+        slug: 'completed-blocker',
+        path: 'completed-blocker.md',
+        title: 'Completed blocker',
+        body: '',
+        status: 'completed',
+        type: 'task',
+      },
+      {
+        id: 'active-blocker',
+        slug: 'active-blocker',
+        path: 'active-blocker.md',
+        title: 'Active blocker',
+        body: '',
+        status: 'todo',
+        type: 'task',
+      },
+    ];
+
+    vi.mocked(mockBackend.list).mockImplementationOnce(async () => readyBeans);
+    const result = await handleQueryOperation(mockBackend, {
+      operation: 'ready',
+    });
+
+    expect(result.structuredContent.count).toBe(2);
+    expect((result.structuredContent.beans as BeanRecord[]).map(b => b.id).sort()).toEqual(
+      ['active-blocker', 'todo-ready'].sort(),
+    );
   });
 });

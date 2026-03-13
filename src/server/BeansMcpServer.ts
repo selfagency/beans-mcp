@@ -1,4 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import { handleQueryOperation, sortBeans } from '../internal/queryHelpers';
 import {
@@ -17,6 +19,40 @@ import pkgJson from '../../package.json' assert { type: 'json' };
 import type { BackendInterface } from './backend';
 
 export { sortBeans };
+
+const execFileAsync = promisify(execFile);
+const PACKAGE_VERSION = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
+
+/**
+ * Extract semantic version from arbitrary CLI output (e.g. "beans version v0.4.2").
+ */
+export function extractVersionFromOutput(output: string): string | null {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/(?:^|[^\d])v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Best-effort CLI version probe. Returns null when unavailable or unparseable.
+ */
+export async function detectBeansCliVersion(cliPath: string, workspaceRoot: string): Promise<string | null> {
+  try {
+    const { stdout, stderr } = await execFileAsync(cliPath, ['version'], {
+      cwd: workspaceRoot,
+      env: process.env,
+      maxBuffer: 1024 * 1024,
+      timeout: 5000,
+    });
+
+    return extractVersionFromOutput(`${stdout}\n${stderr}`);
+  } catch {
+    return null;
+  }
+}
 
 // Exported test seam: get a bean by id with consistent error messages
 export async function getBeanById(backend: BackendInterface, beanId: string) {
@@ -41,7 +77,28 @@ export function initHandler(backend: BackendInterface) {
 }
 
 export function viewHandler(backend: BackendInterface) {
-  return async ({ beanId }: { beanId: string }) => makeTextAndStructured({ bean: await getBeanById(backend, beanId) });
+  return async ({ beanId, beanIds }: { beanId?: string; beanIds?: string[] }) => {
+    const ids = Array.isArray(beanIds) && beanIds.length > 0 ? beanIds : beanId ? [beanId] : [];
+
+    if (ids.length === 0) {
+      throw new Error('Either beanId or beanIds must be provided');
+    }
+
+    const beans = await backend.list();
+    const byId = new Map(beans.map(b => [b.id, b]));
+
+    const found = ids.map(id => byId.get(id)).filter(Boolean);
+    const missingBeanIds = ids.filter(id => !byId.has(id));
+
+    if (ids.length === 1) {
+      if (missingBeanIds.length > 0) {
+        throw new Error(`Bean not found: ${ids[0]}`);
+      }
+      return makeTextAndStructured({ bean: found[0] });
+    }
+
+    return makeTextAndStructured({ beans: found, missingBeanIds, count: found.length, requestedCount: ids.length });
+  };
 }
 
 export function createHandler(backend: BackendInterface) {
@@ -102,6 +159,9 @@ export function updateHandler(backend: BackendInterface) {
     blocking?: string[];
     blockedBy?: string[];
     body?: string;
+    bodyAppend?: string;
+    bodyReplace?: Array<{ old: string; new: string }>;
+    ifMatch?: string;
   }) =>
     makeTextAndStructured({
       bean: await backend.update(input.beanId, {
@@ -113,23 +173,67 @@ export function updateHandler(backend: BackendInterface) {
         blocking: input.blocking,
         blockedBy: input.blockedBy,
         body: input.body,
+        bodyAppend: input.bodyAppend,
+        bodyReplace: input.bodyReplace,
+        ifMatch: input.ifMatch,
       }),
     });
 }
 
 export function deleteHandler(backend: BackendInterface) {
-  return async ({ beanId, force }: { beanId: string; force: boolean }) => {
-    const bean = await getBeanById(backend, beanId);
-    if (!force && bean.status !== 'draft' && bean.status !== 'scrapped') {
-      throw new Error('Only draft and scrapped beans are deletable unless force=true');
+  return async ({ beanId, beanIds, force }: { beanId?: string; beanIds?: string[]; force: boolean }) => {
+    const ids = Array.isArray(beanIds) && beanIds.length > 0 ? beanIds : beanId ? [beanId] : [];
+    if (ids.length === 0) {
+      throw new Error('Either beanId or beanIds must be provided');
     }
-    return makeTextAndStructured(await backend.delete(beanId));
+
+    if (ids.length === 1) {
+      const bean = await getBeanById(backend, ids[0]!);
+      if (!force && bean.status !== 'draft' && bean.status !== 'scrapped') {
+        throw new Error('Only draft and scrapped beans are deletable unless force=true');
+      }
+      return makeTextAndStructured(await backend.delete(ids[0]!));
+    }
+
+    const beans = await backend.list();
+    const byId = new Map(beans.map(b => [b.id, b]));
+    const results: Array<{ beanId: string; deleted: boolean; error?: string }> = [];
+
+    for (const id of ids) {
+      const bean = byId.get(id);
+      if (!bean) {
+        results.push({ beanId: id, deleted: false, error: 'Bean not found' });
+        continue;
+      }
+      if (!force && bean.status !== 'draft' && bean.status !== 'scrapped') {
+        results.push({
+          beanId: id,
+          deleted: false,
+          error: 'Only draft and scrapped beans are deletable unless force=true',
+        });
+        continue;
+      }
+
+      try {
+        await backend.delete(id);
+        results.push({ beanId: id, deleted: true });
+      } catch (error) {
+        results.push({ beanId: id, deleted: false, error: (error as Error).message });
+      }
+    }
+
+    return makeTextAndStructured({
+      results,
+      requestedCount: ids.length,
+      deletedCount: results.filter(r => r.deleted).length,
+      failedCount: results.filter(r => !r.deleted).length,
+    });
   };
 }
 
 export function queryHandler(backend: BackendInterface) {
   return async (opts: {
-    operation: 'refresh' | 'filter' | 'search' | 'sort' | 'llm_context' | 'open_config';
+    operation: 'refresh' | 'filter' | 'search' | 'sort' | 'ready' | 'llm_context' | 'open_config';
     mode?: 'status-priority-type-title' | 'updated' | 'created' | 'id';
     statuses?: string[] | null;
     types?: string[] | null;
@@ -205,7 +309,14 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'View Bean',
       description: 'Fetch full bean details by ID.',
-      inputSchema: z.object({ beanId: z.string().min(1).max(MAX_ID_LENGTH) }),
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+          beanIds: z.array(z.string().min(1).max(MAX_ID_LENGTH)).optional(),
+        })
+        .refine(input => Boolean(input.beanId) || (Array.isArray(input.beanIds) && input.beanIds.length > 0), {
+          message: 'Either beanId or beanIds must be provided',
+        }),
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -290,17 +401,34 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
       title: 'Update Bean',
       description:
         'Update bean metadata fields (status/type/priority/parent/blocking). Consolidated replacement for per-field update tools.',
-      inputSchema: z.object({
-        beanId: z.string().min(1).max(MAX_ID_LENGTH),
-        status: z.string().max(MAX_METADATA_LENGTH).optional(),
-        type: z.string().max(MAX_METADATA_LENGTH).optional(),
-        priority: z.string().max(MAX_METADATA_LENGTH).optional(),
-        parent: z.string().max(MAX_ID_LENGTH).optional(),
-        clearParent: z.boolean().optional(),
-        blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
-        blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
-        body: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
-      }),
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH),
+          status: z.string().max(MAX_METADATA_LENGTH).optional(),
+          type: z.string().max(MAX_METADATA_LENGTH).optional(),
+          priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+          parent: z.string().max(MAX_ID_LENGTH).optional(),
+          clearParent: z.boolean().optional(),
+          blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+          blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+          body: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+          bodyAppend: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+          bodyReplace: z
+            .array(
+              z.object({
+                old: z.string().max(MAX_DESCRIPTION_LENGTH),
+                new: z.string().max(MAX_DESCRIPTION_LENGTH),
+              }),
+            )
+            .optional(),
+          ifMatch: z.string().max(MAX_METADATA_LENGTH).optional(),
+        })
+        .refine(
+          input => !(input.body !== undefined && (input.bodyAppend !== undefined || input.bodyReplace !== undefined)),
+          {
+            message: 'body cannot be combined with bodyAppend/bodyReplace',
+          },
+        ),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -316,10 +444,15 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'Delete Bean',
       description: 'Delete a bean (intended for draft/scrapped beans).',
-      inputSchema: z.object({
-        beanId: z.string().min(1).max(MAX_ID_LENGTH),
-        force: z.boolean().default(false),
-      }),
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+          beanIds: z.array(z.string().min(1).max(MAX_ID_LENGTH)).optional(),
+          force: z.boolean().default(false),
+        })
+        .refine(input => Boolean(input.beanId) || (Array.isArray(input.beanIds) && input.beanIds.length > 0), {
+          message: 'Either beanId or beanIds must be provided',
+        }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -336,7 +469,9 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
       title: 'Query Beans',
       description: 'Unified query tool for refresh, filter, search, and sort operations.',
       inputSchema: z.object({
-        operation: z.enum(['refresh', 'filter', 'search', 'sort', 'llm_context', 'open_config']).default('refresh'),
+        operation: z
+          .enum(['refresh', 'filter', 'search', 'sort', 'ready', 'llm_context', 'open_config'])
+          .default('refresh'),
         mode: z.enum(['status-priority-type-title', 'updated', 'created', 'id']).optional(),
         statuses: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
         types: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
@@ -426,6 +561,12 @@ export class MutableBackend implements BackendInterface {
   openConfig() {
     return this.inner.openConfig();
   }
+  primeInstructions() {
+    return this.inner.primeInstructions?.() ?? Promise.resolve('');
+  }
+  writeInstructions(instructions: string) {
+    return this.inner.writeInstructions?.(instructions) ?? Promise.resolve(null);
+  }
   graphqlSchema() {
     return this.inner.graphqlSchema();
   }
@@ -479,7 +620,7 @@ export async function createBeansMcpServer(opts: {
 
   const server = new McpServer({
     name: opts.name || 'beans-mcp-server',
-    version: opts.version || '0.1.0',
+    version: opts.version || PACKAGE_VERSION,
   });
 
   registerTools(server, backend);
@@ -573,6 +714,8 @@ export async function startBeansMcpServer(
   argv: string[],
   /** For testing only: override the roots resolver so tests can cover the setInner branch. */
   _resolveRoots?: (server: McpServer) => Promise<string | null>,
+  /** For testing only: override Beans CLI version detection. */
+  _detectBeansVersion?: (cliPath: string, workspaceRoot: string) => Promise<string | null>,
 ): Promise<void> {
   const { BeansCliBackend } = await import('./backend');
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
@@ -583,14 +726,25 @@ export async function startBeansMcpServer(
 
   // Emit a single-line startup banner with package version and key settings.
   try {
-    const version = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
     const workspaceLabel = workspaceExplicit ? workspaceRoot : '(auto from roots)';
     // stderr only – stdout is reserved for JSON-RPC traffic
     console.error(
-      `[beans-mcp] v${version} starting (port=${port}, workspace=${workspaceLabel}, cli=${cliPath}, logDir=${logDir})`,
+      `[beans-mcp] v${PACKAGE_VERSION} starting (port=${port}, workspace=${workspaceLabel}, cli=${cliPath}, logDir=${logDir})`,
     );
   } catch {
     // Best-effort only; never fail startup on logging
+  }
+
+  const beansVersionDetector = _detectBeansVersion ?? detectBeansCliVersion;
+  const detectedBeansVersion = await beansVersionDetector(cliPath, workspaceRoot);
+  if (!detectedBeansVersion) {
+    console.error(
+      `[beans-mcp] warning: unable to determine Beans CLI version from \`${cliPath}\`; proceeding without version compatibility checks.`,
+    );
+  } else if (detectedBeansVersion !== PACKAGE_VERSION) {
+    console.error(
+      `[beans-mcp] warning: version mismatch detected (beans=${detectedBeansVersion}, beans-mcp=${PACKAGE_VERSION}); continuing startup.`,
+    );
   }
 
   // Use a mutable delegate so we can hot-swap the workspace after roots discovery
@@ -613,7 +767,7 @@ export async function startBeansMcpServer(
     const resolver = _resolveRoots ?? resolveWorkspaceFromRoots;
     const rootPath = await resolver(server);
     if (rootPath) {
-      mutable.setInner(new BeansCliBackend(rootPath, cliPath));
+      mutable.setInner(new BeansCliBackend(rootPath, cliPath, logDir));
       // Log the resolved workspace for traceability (stderr to avoid stdout noise)
       try {
         console.error(`[beans-mcp] workspace resolved from roots: ${rootPath}`);
