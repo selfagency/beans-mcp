@@ -576,7 +576,9 @@ describe('handleQueryOperation', () => {
       },
     ];
 
-    vi.mocked(mockBackend.list).mockImplementationOnce(async () => readyBeans);
+    vi.mocked(mockBackend.list)
+      .mockImplementationOnce(async () => readyBeans)
+      .mockImplementationOnce(async () => readyBeans);
     const result = await handleQueryOperation(mockBackend, {
       operation: 'ready',
     });

@@ -11,6 +11,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import pkgJson from '../../package.json' assert { type: 'json' };
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by vitest before any imports
 // ---------------------------------------------------------------------------
@@ -142,11 +147,7 @@ describe('startBeansMcpServer', () => {
 
     expect(resolver).toHaveBeenCalledTimes(1);
     // setInner creates a new BeansCliBackend with the discovered path.
-    expect(vi.mocked(BeansCliBackend)).toHaveBeenLastCalledWith(
-      '/roots/detected/workspace',
-      'beans',
-      '/Users/daniel/Developer/beans-mcp',
-    );
+    expect(vi.mocked(BeansCliBackend)).toHaveBeenLastCalledWith('/roots/detected/workspace', 'beans', process.cwd());
   });
 
   it('does not call setInner when resolver returns null', async () => {
@@ -171,6 +172,8 @@ describe('startBeansMcpServer', () => {
       startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => '9.9.9'),
     ).resolves.toBeUndefined();
 
+    await flushMicrotasks();
+
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: version mismatch detected'));
     spy.mockRestore();
   });
@@ -180,6 +183,8 @@ describe('startBeansMcpServer', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => null)).resolves.toBeUndefined();
+
+    await flushMicrotasks();
 
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: unable to determine Beans CLI version'));
     spy.mockRestore();

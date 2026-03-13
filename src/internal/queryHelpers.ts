@@ -155,10 +155,11 @@ export async function handleQueryOperation(
   }
 
   if (operation === 'ready') {
-    const beans = await backend.list({ status: normalizedStatuses, type: normalizedTypes, search });
-    const byId = new Map(beans.map(bean => [bean.id, bean]));
+    const allBeans = await backend.list();
+    const byId = new Map(allBeans.map(bean => [bean.id, bean]));
+    const candidates = await backend.list({ status: normalizedStatuses, type: normalizedTypes, search });
 
-    const readyBeans = beans.filter((bean: BeanRecord) => {
+    const readyBeans = candidates.filter((bean: BeanRecord) => {
       if (bean.status !== 'todo') {
         return false;
       }
