@@ -50,7 +50,7 @@ function makeBackend(overrides: Partial<any> = {}) {
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
     })),
-    createBeanFile: vi.fn(async (path: string, content: string, opts: any) => ({
+    createBeanFile: vi.fn(async (path: string, content: string, _opts: any) => ({
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
       created: true,
@@ -87,6 +87,14 @@ describe('Handlers (unit)', () => {
     expect(data.bean.id).toBe('b1');
   });
 
+  it('viewHandler supports multiple bean ids and reports missing ids', async () => {
+    const backend = makeBackend();
+    const res = await viewHandler(backend)({ beanIds: ['b1', 'missing'] });
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.beans).toHaveLength(1);
+    expect(data.missingBeanIds).toEqual(['missing']);
+  });
+
   it('createHandler delegates to backend.create', async () => {
     const backend = makeBackend();
     const res = await createHandler(backend)({ title: 'T', type: 't' });
@@ -117,6 +125,28 @@ describe('Handlers (unit)', () => {
     expect(data.bean.body).toBe('new body text');
   });
 
+  it('updateHandler passes ifMatch through to backend.update', async () => {
+    const backend = makeBackend();
+    await updateHandler(backend)({ beanId: 'b1', ifMatch: 'etag-123' } as any);
+    expect(backend.update).toHaveBeenCalledWith('b1', expect.objectContaining({ ifMatch: 'etag-123' }));
+  });
+
+  it('updateHandler passes bodyAppend/bodyReplace through to backend.update', async () => {
+    const backend = makeBackend();
+    await updateHandler(backend)({
+      beanId: 'b1',
+      bodyAppend: '## Notes',
+      bodyReplace: [{ old: '- [ ] A', new: '- [x] A' }],
+    } as any);
+    expect(backend.update).toHaveBeenCalledWith(
+      'b1',
+      expect.objectContaining({
+        bodyAppend: '## Notes',
+        bodyReplace: [{ old: '- [ ] A', new: '- [x] A' }],
+      }),
+    );
+  });
+
   it('reopenHandler throws if current status mismatches', async () => {
     const backend = makeBackend();
     await expect(
@@ -145,8 +175,18 @@ describe('Handlers (unit)', () => {
     await expect(deleteHandler(backend)({ beanId: 'b1', force: false })).rejects.toThrow(
       /Only draft and scrapped beans are deletable/,
     );
-    const res = await deleteHandler(backend)({ beanId: 'b1', force: true });
+    await deleteHandler(backend)({ beanId: 'b1', force: true });
     expect(backend.delete).toHaveBeenCalledWith('b1');
+  });
+
+  it('deleteHandler supports batch deletion with per-item results', async () => {
+    const backend = makeBackend();
+    const res = await deleteHandler(backend)({ beanIds: ['b2', 'missing', 'b1'], force: false } as any);
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.requestedCount).toBe(3);
+    expect(data.deletedCount).toBe(1);
+    expect(data.failedCount).toBe(2);
+    expect(data.results.some((r: any) => r.beanId === 'missing' && r.deleted === false)).toBe(true);
   });
 
   it('beanFileHandler routes operations', async () => {

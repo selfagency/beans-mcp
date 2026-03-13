@@ -26,6 +26,12 @@ export const UPDATE_BEAN_MUTATION = `
   }
 `;
 
+export const UPDATE_BEAN_MUTATION_WITH_IF_MATCH = `
+  mutation($id: ID!, $input: UpdateBeanInput!, $ifMatch: String!) {
+    updateBean(id: $id, input: $input, ifMatch: $ifMatch) { id slug path title body status type priority tags parentId blockingIds blockedByIds createdAt updatedAt etag }
+  }
+`;
+
 export const DELETE_BEAN_MUTATION = `
   mutation($id: ID!) {
     deleteBean(id: $id)
