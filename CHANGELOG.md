@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Versioning policy now tracks upstream Beans versions (e.g. Beans `0.4.2` ↔ `@selfagency/beans-mcp@0.4.2`).
+- MCP server metadata version now defaults to package version instead of a hardcoded fallback.
+
+### Added
+
+- Startup version compatibility warning: the server compares `beans` CLI version with `@selfagency/beans-mcp` version and warns on mismatch.
+- Version probe failures are warning-only; startup continues in best-effort mode.
+- `beans_query` now supports `operation: "ready"` to return actionable beans.
+- `beans_view` now supports multi-ID lookups via `beanIds`.
+- `beans_delete` now supports batch deletion via `beanIds` with per-item summary results.
+- `beans_update` now accepts optional `ifMatch` and forwards optimistic-concurrency intent where supported.
+- `beans_update` now supports atomic body modifications via `bodyReplace` and `bodyAppend`.
+- `beans_query` `llm_context` now returns live `beans prime` instructions and can write them to `.github/instructions/beans-prime.instructions.md`.
+
 ## [0.1.4] - 2026-02-27
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.3...v0.1.4

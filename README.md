@@ -12,6 +12,14 @@ MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) 
 npx @selfagency/beans-mcp /path/to/workspace
 ```
 
+### Versioning
+
+`@selfagency/beans-mcp` tracks upstream [Beans](https://github.com/hmans/beans) versions.
+For example, Beans `v0.4.2` maps to `@selfagency/beans-mcp@0.4.2`.
+
+At startup, the server compares its own package version against the installed `beans`
+CLI version. If they differ, it prints a warning to stderr and continues startup.
+
 ### Parameters
 
 - `--workspace-root` or positional arg: Workspace root path
@@ -23,12 +31,12 @@ npx @selfagency/beans-mcp /path/to/workspace
 ## Summary of public MCP tools
 
 - `beans_init` — Initialize the workspace (optional `prefix`).
-- `beans_view` — Fetch full bean details by `beanId`.
+- `beans_view` — Fetch full bean details by `beanId` or `beanIds`.
 - `beans_create` — Create a new bean (title/type + optional fields).
-- `beans_update` — Consolidated metadata updates (status/type/priority/parent/clearParent/blocking/blockedBy).
-- `beans_delete` — Delete a bean (`beanId`, optional `force`).
+- `beans_update` — Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`).
+- `beans_delete` — Delete one or many beans (`beanId` or `beanIds`, optional `force`).
 - `beans_reopen` — Reopen a completed or scrapped bean to an active status.
-- `beans_query` — Unified list/search/filter/sort/llm_context/open_config operations.
+- `beans_query` — Unified list/search/filter/sort/ready/llm_context/open_config operations.
 - `beans_bean_file` — Read/edit/create/delete files under `.beans`.
 - `beans_output` — Read extension output logs or show guidance.
 
@@ -37,6 +45,7 @@ npx @selfagency/beans-mcp /path/to/workspace
 - The `beans_query` tool is intentionally broad: prefer it for listing, searching, filtering or sorting beans, and for generating Copilot instructions (`operation: 'llm_context'`).
 - All file and log operations validate paths to keep them within the workspace or the VS Code log directory.
 - `beans_update` replaces many fine-grained update tools; callers should use it to keep the public tool surface small and predictable.
+- Version mismatches are warning-only and non-blocking by design.
 
 ## Examples
 
@@ -60,6 +69,12 @@ Request:
 
 ```json
 { "beanId": "bean-abc" }
+```
+
+Request (multiple beans):
+
+```json
+{ "beanIds": ["bean-abc", "bean-def"] }
 ```
 
 Response (structuredContent):
@@ -114,9 +129,25 @@ Request (change status and add blocking):
 {
   "beanId": "bean-abc",
   "status": "in-progress",
-  "blocking": ["bean-def"]
+  "blocking": ["bean-def"],
+  "ifMatch": "etag-value"
 }
 ```
+
+Request (atomic body modifications):
+
+```json
+{
+  "beanId": "bean-abc",
+  "bodyReplace": [
+    { "old": "- [ ] Task 1", "new": "- [x] Task 1" },
+    { "old": "- [ ] Task 2", "new": "- [x] Task 2" }
+  ],
+  "bodyAppend": "## Summary\n\nAll checklist items completed."
+}
+```
+
+> Note: `body` (full replacement) cannot be combined with `bodyAppend` or `bodyReplace` in the same request.
 
 Response (structuredContent):
 
@@ -142,6 +173,26 @@ Response:
 
 ```json
 { "deleted": true, "beanId": "bean-old" }
+```
+
+Batch request:
+
+```json
+{ "beanIds": ["bean-old", "bean-older"], "force": false }
+```
+
+Batch response (summary):
+
+```json
+{
+  "requestedCount": 2,
+  "deletedCount": 2,
+  "failedCount": 0,
+  "results": [
+    { "beanId": "bean-old", "deleted": true },
+    { "beanId": "bean-older", "deleted": true }
+  ]
+}
 ```
 
 ### beans_reopen
@@ -199,6 +250,12 @@ Sort (modes: `status-priority-type-title`, `updated`, `created`, `id`):
 { "operation": "sort", "mode": "updated" }
 ```
 
+Ready (actionable beans only):
+
+```json
+{ "operation": "ready" }
+```
+
 LLM context (generate Copilot instructions; optional write-to-workspace):
 
 ```json
@@ -211,7 +268,7 @@ Response (structuredContent):
 {
   "graphqlSchema": "...",
   "generatedInstructions": "...",
-  "instructionsPath": "/workspace/.github/instructions/tasks.instructions.md"
+  "instructionsPath": "/workspace/.github/instructions/beans-prime.instructions.md"
 }
 ```
 

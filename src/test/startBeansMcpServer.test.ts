@@ -9,6 +9,12 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import pkgJson from '../../package.json' assert { type: 'json' };
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by vitest before any imports
@@ -70,7 +76,13 @@ vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => {
 describe('startBeansMcpServer', () => {
   it('starts without error when an explicit workspace root is given', async () => {
     const { startBeansMcpServer } = await import('../server/BeansMcpServer');
-    await expect(startBeansMcpServer(['--workspace-root', '/my/workspace'])).resolves.toBeUndefined();
+    await expect(
+      startBeansMcpServer(
+        ['--workspace-root', '/my/workspace'],
+        undefined,
+        async () => (pkgJson as { version: string }).version,
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it('creates StdioServerTransport and connects', async () => {
@@ -78,7 +90,7 @@ describe('startBeansMcpServer', () => {
     const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
     vi.mocked(StdioServerTransport).mockClear();
 
-    await startBeansMcpServer(['/some/workspace']);
+    await startBeansMcpServer(['/some/workspace'], undefined, async () => (pkgJson as { version: string }).version);
 
     expect(vi.mocked(StdioServerTransport)).toHaveBeenCalledTimes(1);
   });
@@ -88,7 +100,11 @@ describe('startBeansMcpServer', () => {
 
     // Use an explicit workspace so resolveWorkspaceFromRoots is not called
     // (the mock transport has no client and would hang waiting for a response).
-    await startBeansMcpServer(['--workspace-root', '/w', '--port', '12345']);
+    await startBeansMcpServer(
+      ['--workspace-root', '/w', '--port', '12345'],
+      undefined,
+      async () => (pkgJson as { version: string }).version,
+    );
 
     expect(process.env.BEANS_MCP_PORT).toBe('12345');
     expect(process.env.BEANS_VSCODE_MCP_PORT).toBe('12345');
@@ -99,7 +115,7 @@ describe('startBeansMcpServer', () => {
     const { BeansCliBackend } = await import('../server/backend');
     vi.mocked(BeansCliBackend).mockClear();
 
-    await startBeansMcpServer(['/explicit/root']);
+    await startBeansMcpServer(['/explicit/root'], undefined, async () => (pkgJson as { version: string }).version);
 
     // First call: initial backend; explicit flag prevents a second call for setInner.
     expect(vi.mocked(BeansCliBackend)).toHaveBeenCalledWith('/explicit/root', 'beans', expect.any(String));
@@ -110,7 +126,11 @@ describe('startBeansMcpServer', () => {
     const { startBeansMcpServer } = await import('../server/BeansMcpServer');
     const resolver = vi.fn(async () => '/should-not-be-used');
 
-    await startBeansMcpServer(['--workspace-root', '/explicit'], resolver);
+    await startBeansMcpServer(
+      ['--workspace-root', '/explicit'],
+      resolver,
+      async () => (pkgJson as { version: string }).version,
+    );
 
     expect(resolver).not.toHaveBeenCalled();
   });
@@ -123,11 +143,11 @@ describe('startBeansMcpServer', () => {
     const resolver = vi.fn(async () => '/roots/detected/workspace');
 
     // No explicit workspace → resolver is invoked; non-null rootPath → setInner is called.
-    await startBeansMcpServer([], resolver);
+    await startBeansMcpServer([], resolver, async () => (pkgJson as { version: string }).version);
 
     expect(resolver).toHaveBeenCalledTimes(1);
     // setInner creates a new BeansCliBackend with the discovered path.
-    expect(vi.mocked(BeansCliBackend)).toHaveBeenLastCalledWith('/roots/detected/workspace', 'beans');
+    expect(vi.mocked(BeansCliBackend)).toHaveBeenLastCalledWith('/roots/detected/workspace', 'beans', process.cwd());
   });
 
   it('does not call setInner when resolver returns null', async () => {
@@ -137,10 +157,49 @@ describe('startBeansMcpServer', () => {
 
     const resolver = vi.fn(async () => null);
 
-    await startBeansMcpServer([], resolver);
+    await startBeansMcpServer([], resolver, async () => (pkgJson as { version: string }).version);
 
     expect(resolver).toHaveBeenCalledTimes(1);
     // Only the initial BeansCliBackend call; no second call from setInner.
     expect(vi.mocked(BeansCliBackend)).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns but proceeds when Beans CLI version mismatches package version', async () => {
+    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => '9.9.9'),
+    ).resolves.toBeUndefined();
+
+    await flushMicrotasks();
+
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: version mismatch detected'));
+    spy.mockRestore();
+  });
+
+  it('warns but proceeds when Beans CLI version cannot be determined', async () => {
+    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => null)).resolves.toBeUndefined();
+
+    await flushMicrotasks();
+
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: unable to determine Beans CLI version'));
+    spy.mockRestore();
+  });
+
+  it('does not emit mismatch warning when versions match', async () => {
+    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => (pkgJson as { version: string }).version),
+    ).resolves.toBeUndefined();
+
+    const logged = spy.mock.calls.map(call => String(call[0]));
+    expect(logged.some(msg => msg.includes('warning: version mismatch detected'))).toBe(false);
+    spy.mockRestore();
   });
 });

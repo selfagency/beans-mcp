@@ -51,6 +51,8 @@ function makeBackend(overrides: Partial<BackendInterface> = {}): BackendInterfac
     update: vi.fn(async (id, updates) => ({ ...BEAN, id, ...updates })),
     delete: vi.fn(async () => ({ deleted: true, beanId: BEAN.id })),
     openConfig: vi.fn(async () => ({ configPath: '/ws/.beans.yml', content: 'prefix: proj' })),
+    primeInstructions: vi.fn(async () => 'PRIME-OUTPUT'),
+    writeInstructions: vi.fn(async () => '/ws/.github/instructions/beans-prime.instructions.md'),
     graphqlSchema: vi.fn(async () => 'type Query { beans: [Bean] }'),
     readOutputLog: vi.fn(async () => ({ path: '/log.txt', content: 'line1\nline2', linesReturned: 2 })),
     readBeanFile: vi.fn(async path => ({ path, content: '---\ntitle: Test\n---\n' })),
@@ -134,7 +136,7 @@ describe('tool registration', () => {
     try {
       const { tools } = await client.listTools();
       for (const tool of tools) {
-        expect(tool.title, `${tool.name} should have a title`).toBeTruthy();
+        expect(tool.title).toBeTruthy();
       }
     } finally {
       await cleanup();
@@ -146,7 +148,7 @@ describe('tool registration', () => {
     try {
       const { tools } = await client.listTools();
       for (const tool of tools) {
-        expect(tool.description, `${tool.name} should have a description`).toBeTruthy();
+        expect(tool.description).toBeTruthy();
       }
     } finally {
       await cleanup();
@@ -233,6 +235,18 @@ describe('beans_view', () => {
     const { client, cleanup } = await bootClient(makeBackend());
     try {
       await expectError(client.callTool({ name: 'beans_view', arguments: { beanId: 'x'.repeat(129) } }));
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('supports multi-id bean lookup via beanIds', async () => {
+    const { client, cleanup } = await bootClient(makeBackend());
+    try {
+      const result = await client.callTool({ name: 'beans_view', arguments: { beanIds: ['bean-1', 'missing'] } });
+      const data = parseResult(result) as { beans: BeanRecord[]; missingBeanIds: string[] };
+      expect(data.beans).toHaveLength(1);
+      expect(data.missingBeanIds).toEqual(['missing']);
     } finally {
       await cleanup();
     }
@@ -376,6 +390,62 @@ describe('beans_update', () => {
       await cleanup();
     }
   });
+
+  it('passes ifMatch through to backend.update', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      await client.callTool({
+        name: 'beans_update',
+        arguments: { beanId: 'bean-1', status: 'todo', ifMatch: 'etag-1' },
+      });
+      expect(backend.update).toHaveBeenCalledWith('bean-1', expect.objectContaining({ ifMatch: 'etag-1' }));
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('passes bodyAppend/bodyReplace through to backend.update', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      await client.callTool({
+        name: 'beans_update',
+        arguments: {
+          beanId: 'bean-1',
+          bodyAppend: '## Notes',
+          bodyReplace: [{ old: '- [ ] A', new: '- [x] A' }],
+        },
+      });
+      expect(backend.update).toHaveBeenCalledWith(
+        'bean-1',
+        expect.objectContaining({
+          bodyAppend: '## Notes',
+          bodyReplace: [{ old: '- [ ] A', new: '- [x] A' }],
+        }),
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('rejects combining body with bodyAppend/bodyReplace', async () => {
+    const { client, cleanup } = await bootClient(makeBackend());
+    try {
+      await expectError(
+        client.callTool({
+          name: 'beans_update',
+          arguments: {
+            beanId: 'bean-1',
+            body: 'full body',
+            bodyAppend: 'append',
+          },
+        }),
+      );
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 describe('beans_edit', () => {
@@ -507,6 +577,26 @@ describe('beans_delete', () => {
       await cleanup();
     }
   });
+
+  it('supports batch deletion via beanIds with summary result', async () => {
+    const beans = [
+      { ...BEAN, id: 'bean-1', status: 'draft' },
+      { ...BEAN, id: 'bean-2', status: 'todo' },
+    ];
+    const backend = makeBackend({ list: vi.fn(async () => beans) });
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_delete',
+        arguments: { beanIds: ['bean-1', 'bean-2', 'missing'], force: false },
+      });
+      const data = parseResult(result) as { deletedCount: number; failedCount: number };
+      expect(data.deletedCount).toBe(1);
+      expect(data.failedCount).toBe(2);
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -608,6 +698,47 @@ describe('beans_query', () => {
     const { client, cleanup } = await bootClient(makeBackend());
     try {
       await expectError(client.callTool({ name: 'beans_query', arguments: { operation: 'noop' } }));
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('ready returns actionable todo beans only', async () => {
+    const beans = [
+      { ...BEAN, id: 'todo-ready', status: 'todo', blockedByIds: ['done'] },
+      { ...BEAN, id: 'todo-blocked', status: 'todo', blockedByIds: ['active'] },
+      { ...BEAN, id: 'done', status: 'completed' },
+      { ...BEAN, id: 'active', status: 'todo' },
+      { ...BEAN, id: 'wip', status: 'in-progress', blockedByIds: [] },
+    ];
+    const backend = makeBackend({ list: vi.fn(async () => beans) });
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({ name: 'beans_query', arguments: { operation: 'ready' } });
+      const data = parseResult(result) as { count: number; beans: BeanRecord[] };
+      expect(data.count).toBe(2);
+      expect(data.beans.map(b => b.id).sort()).toEqual(['active', 'todo-ready'].sort());
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('llm_context returns prime instructions and optional write path', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_query',
+        arguments: { operation: 'llm_context', writeToWorkspaceInstructions: true },
+      });
+      const data = parseResult(result) as {
+        graphqlSchema: string;
+        generatedInstructions: string;
+        instructionsPath: string | null;
+      };
+      expect(data.graphqlSchema).toContain('type Query');
+      expect(data.generatedInstructions).toBe('PRIME-OUTPUT');
+      expect(data.instructionsPath).toContain('beans-prime.instructions.md');
     } finally {
       await cleanup();
     }
