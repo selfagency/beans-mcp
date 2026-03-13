@@ -136,7 +136,7 @@ describe('tool registration', () => {
     try {
       const { tools } = await client.listTools();
       for (const tool of tools) {
-        expect(tool.title, `${tool.name} should have a title`).toBeTruthy();
+        expect(tool.title).toBeTruthy();
       }
     } finally {
       await cleanup();
@@ -148,7 +148,7 @@ describe('tool registration', () => {
     try {
       const { tools } = await client.listTools();
       for (const tool of tools) {
-        expect(tool.description, `${tool.name} should have a description`).toBeTruthy();
+        expect(tool.description).toBeTruthy();
       }
     } finally {
       await cleanup();

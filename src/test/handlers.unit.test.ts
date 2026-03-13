@@ -50,7 +50,7 @@ function makeBackend(overrides: Partial<any> = {}) {
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
     })),
-    createBeanFile: vi.fn(async (path: string, content: string, opts: any) => ({
+    createBeanFile: vi.fn(async (path: string, content: string, _opts: any) => ({
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
       created: true,
@@ -175,7 +175,7 @@ describe('Handlers (unit)', () => {
     await expect(deleteHandler(backend)({ beanId: 'b1', force: false })).rejects.toThrow(
       /Only draft and scrapped beans are deletable/,
     );
-    const res = await deleteHandler(backend)({ beanId: 'b1', force: true });
+    await deleteHandler(backend)({ beanId: 'b1', force: true });
     expect(backend.delete).toHaveBeenCalledWith('b1');
   });
 

@@ -23,6 +23,25 @@ export { sortBeans };
 const execFileAsync = promisify(execFile);
 const PACKAGE_VERSION = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
 
+function getSafeCliEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const whitelist = ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'];
+  const safeEnv: NodeJS.ProcessEnv = {};
+
+  for (const key of whitelist) {
+    if (env[key]) {
+      safeEnv[key] = env[key];
+    }
+  }
+
+  for (const key in env) {
+    if (key.startsWith('BEANS_')) {
+      safeEnv[key] = env[key];
+    }
+  }
+
+  return safeEnv;
+}
+
 /**
  * Extract semantic version from arbitrary CLI output (e.g. "beans version v0.4.2").
  */
@@ -43,7 +62,7 @@ export async function detectBeansCliVersion(cliPath: string, workspaceRoot: stri
   try {
     const { stdout, stderr } = await execFileAsync(cliPath, ['version'], {
       cwd: workspaceRoot,
-      env: process.env,
+      env: getSafeCliEnv(process.env),
       maxBuffer: 1024 * 1024,
       timeout: 5000,
     });
@@ -84,21 +103,39 @@ export function viewHandler(backend: BackendInterface) {
       throw new Error('Either beanId or beanIds must be provided');
     }
 
+    if (ids.length === 1) {
+      const bean = await getBeanById(backend, ids[0]!);
+      return makeTextAndStructured({ bean });
+    }
+
     const beans = await backend.list();
     const byId = new Map(beans.map(b => [b.id, b]));
 
     const found = ids.map(id => byId.get(id)).filter(Boolean);
     const missingBeanIds = ids.filter(id => !byId.has(id));
 
-    if (ids.length === 1) {
-      if (missingBeanIds.length > 0) {
-        throw new Error(`Bean not found: ${ids[0]}`);
-      }
-      return makeTextAndStructured({ bean: found[0] });
-    }
-
     return makeTextAndStructured({ beans: found, missingBeanIds, count: found.length, requestedCount: ids.length });
   };
+}
+
+async function checkVersionCompatibility(
+  cliPath: string,
+  workspaceRoot: string,
+  detector: (cliPath: string, workspaceRoot: string) => Promise<string | null>,
+): Promise<void> {
+  const detectedBeansVersion = await detector(cliPath, workspaceRoot);
+  if (!detectedBeansVersion) {
+    console.error(
+      `[beans-mcp] warning: unable to determine Beans CLI version from \`${cliPath}\`; proceeding without version compatibility checks.`,
+    );
+    return;
+  }
+
+  if (detectedBeansVersion !== PACKAGE_VERSION) {
+    console.error(
+      `[beans-mcp] warning: version mismatch detected (beans=${detectedBeansVersion}, beans-mcp=${PACKAGE_VERSION}); continuing startup.`,
+    );
+  }
 }
 
 export function createHandler(backend: BackendInterface) {
@@ -721,6 +758,7 @@ export async function startBeansMcpServer(
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
 
   const { workspaceRoot, workspaceExplicit, cliPath, port, logDir } = parseCliArgs(argv);
+  let effectiveWorkspaceRoot = workspaceRoot;
   process.env.BEANS_VSCODE_MCP_PORT = String(port);
   process.env.BEANS_MCP_PORT = String(port);
 
@@ -733,18 +771,6 @@ export async function startBeansMcpServer(
     );
   } catch {
     // Best-effort only; never fail startup on logging
-  }
-
-  const beansVersionDetector = _detectBeansVersion ?? detectBeansCliVersion;
-  const detectedBeansVersion = await beansVersionDetector(cliPath, workspaceRoot);
-  if (!detectedBeansVersion) {
-    console.error(
-      `[beans-mcp] warning: unable to determine Beans CLI version from \`${cliPath}\`; proceeding without version compatibility checks.`,
-    );
-  } else if (detectedBeansVersion !== PACKAGE_VERSION) {
-    console.error(
-      `[beans-mcp] warning: version mismatch detected (beans=${detectedBeansVersion}, beans-mcp=${PACKAGE_VERSION}); continuing startup.`,
-    );
   }
 
   // Use a mutable delegate so we can hot-swap the workspace after roots discovery
@@ -768,10 +794,17 @@ export async function startBeansMcpServer(
     const rootPath = await resolver(server);
     if (rootPath) {
       mutable.setInner(new BeansCliBackend(rootPath, cliPath, logDir));
+      effectiveWorkspaceRoot = rootPath;
       // Log the resolved workspace for traceability (stderr to avoid stdout noise)
       try {
         console.error(`[beans-mcp] workspace resolved from roots: ${rootPath}`);
       } catch {}
     }
   }
+
+  // Non-blocking compatibility warning: do not delay startup while probing CLI version.
+  const beansVersionDetector = _detectBeansVersion ?? detectBeansCliVersion;
+  void checkVersionCompatibility(cliPath, effectiveWorkspaceRoot, beansVersionDetector).catch(() => {
+    // Best-effort logging only; never fail startup.
+  });
 }
