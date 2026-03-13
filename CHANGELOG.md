@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-13
+
+## What's Changed
+* feat: align MCP server with Beans 0.4.x + prime workflow by @selfagency in https://github.com/selfagency/beans-mcp/pull/3
+
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.4...v0.4.2
+
+_Source: changes from v0.1.4 to v0.4.2._
+
+
 ### Changed
 
 - Versioning policy now tracks upstream Beans versions (e.g. Beans `0.4.2` ↔ `@selfagency/beans-mcp@0.4.2`).
