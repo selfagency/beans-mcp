@@ -570,7 +570,7 @@ export class BeansCliBackend implements BackendInterface {
         // Already quoted with double or single quotes — normalise to double quotes
         if (/^".*"$/.test(trimmed)) return `${prefix}${trimmed}`;
         if (/^'.*'$/.test(trimmed)) {
-          const inner = trimmed.slice(1, -1).replace(/'/g, "\\'");
+          const inner = trimmed.slice(1, -1).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
           return `${prefix}"${inner}"`;
         }
         // Escape any existing double-quotes inside the raw value
