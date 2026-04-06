@@ -561,24 +561,52 @@ export class BeansCliBackend implements BackendInterface {
   /**
    * Ensure every `title:` line in YAML frontmatter is double-quoted.
    * Handles already-quoted (single or double), multi-word, and special-char values.
+   *
+   * Uses plain string splitting instead of backtracking regexes to guarantee
+   * linear-time processing and eliminate any ReDoS attack surface.
    */
   private quoteFrontmatterTitles(content: string): string {
-    // Only operate inside the frontmatter block (--- ... ---)
-    return content.replace(/^(---\n)([\s\S]*?)(\n---)/m, (_match, open, body, close) => {
-      const fixedBody = body.replace(/^(title:\s*)(.+)$/m, (_line: string, prefix: string, value: string) => {
-        const trimmed = value.trim();
-        // Already quoted with double or single quotes — normalise to double quotes
-        if (/^".*"$/.test(trimmed)) return `${prefix}${trimmed}`;
-        if (/^'.*'$/.test(trimmed)) {
-          const inner = trimmed.slice(1, -1).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-          return `${prefix}"${inner}"`;
-        }
-        // Escape any existing double-quotes inside the raw value
-        const escaped = trimmed.replace(/"/g, '\\"');
-        return `${prefix}"${escaped}"`;
-      });
-      return `${open}${fixedBody}${close}`;
+    // Frontmatter must start at the very first line with "---"
+    if (!content.startsWith('---\n')) {
+      return content;
+    }
+
+    // Find the closing "---" delimiter.  indexOf is O(n) with no backtracking.
+    const openEnd = 4; // length of "---\n"
+    const closeMarker = '\n---';
+    const closeIdx = content.indexOf(closeMarker, openEnd);
+    if (closeIdx === -1) {
+      return content;
+    }
+
+    const frontmatter = content.slice(openEnd, closeIdx);
+    const rest = content.slice(closeIdx); // includes the "\n---"
+
+    // Rewrite only the "title:" line — scan line by line, O(n).
+    const lines = frontmatter.split('\n');
+    const fixedLines = lines.map(line => {
+      // Match "title:" with optional spaces — no regex quantifier backtracking.
+      if (!line.startsWith('title:')) {
+        return line;
+      }
+      const colonIdx = line.indexOf(':');
+      const raw = line.slice(colonIdx + 1).trimStart();
+
+      // Already double-quoted: check first and last char only — O(1).
+      if (raw.length >= 2 && raw[0] === '"' && raw[raw.length - 1] === '"') {
+        return line;
+      }
+      // Already single-quoted: normalise to double quotes.
+      if (raw.length >= 2 && raw[0] === "'" && raw[raw.length - 1] === "'") {
+        const inner = raw.slice(1, -1).replaceAll("'", "\\'");
+        return `title: "${inner}"`;
+      }
+      // Unquoted: escape any literal double-quotes, then wrap.
+      const escaped = raw.replaceAll('"', '\\"');
+      return `title: "${escaped}"`;
     });
+
+    return `---\n${fixedLines.join('\n')}${rest}`;
   }
 
   async readBeanFile(relativePath: string): Promise<{ path: string; content: string }> {
