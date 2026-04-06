@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import * as graphql from '../internal/graphql';
-import { BeanRecord, GraphQLError } from '../types';
+import type { BeanRecord, GraphQLError } from '../types';
 import { isPathWithinRoot } from '../utils';
 
 const execFileAsync = promisify(execFile);
@@ -22,6 +22,8 @@ export interface BackendInterface {
     type: string;
     status?: string;
     priority?: string;
+    /** Body markdown content. `description` is a deprecated alias. */
+    body?: string;
     description?: string;
     parent?: string;
   }): Promise<BeanRecord>;
@@ -42,6 +44,35 @@ export interface BackendInterface {
     },
   ): Promise<BeanRecord>;
   delete(beanId: string): Promise<Record<string, unknown>>;
+  bulkCreate(
+    beans: Array<{
+      title: string;
+      type: string;
+      status?: string;
+      priority?: string;
+      body?: string;
+      description?: string;
+      parent?: string;
+    }>,
+    defaultParent?: string,
+  ): Promise<Array<{ bean?: BeanRecord; error?: string }>>;
+  bulkUpdate(
+    beans: Array<{
+      beanId: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent?: string;
+      clearParent?: boolean;
+      blocking?: string[];
+      blockedBy?: string[];
+      body?: string;
+      bodyAppend?: string;
+      bodyReplace?: Array<{ old: string; new: string }>;
+      ifMatch?: string;
+    }>,
+    defaultParent?: string,
+  ): Promise<Array<{ beanId: string; bean?: BeanRecord; error?: string }>>;
   openConfig(): Promise<{ configPath: string; content: string }>;
   primeInstructions?(): Promise<string>;
   writeInstructions?(instructions: string): Promise<string | null>;
@@ -67,6 +98,23 @@ export class BeansCliBackend implements BackendInterface {
     private readonly cliPath: string,
     private readonly logDir?: string,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // Cache
+  // ---------------------------------------------------------------------------
+
+  /** Full unfiltered records keyed by bean ID, stored under the fixed cache key `'all'`. */
+  private readonly _cache = new Map<string, Map<string, BeanRecord>>();
+  /** Last time the unfiltered cache entry `'all'` was fetched (ms). */
+  private readonly _cacheTime = new Map<string, number>();
+  /** Short-circuit TTL: skip even the timestamp check within this window (ms). */
+  private static readonly BURST_TTL_MS = 5_000;
+
+  /** Invalidate the unfiltered list cache so the next call does a full fetch. */
+  private invalidateCache(): void {
+    this._cache.delete('all');
+    this._cacheTime.delete('all');
+  }
 
   /**
    * Returns a safe environment for executing the Beans CLI,
@@ -97,7 +145,12 @@ export class BeansCliBackend implements BackendInterface {
   }
 
   private resolveBeanFilePath(relativePath: string): string {
-    const cleaned = relativePath.trim().replace(/^\/+/, '');
+    // Strip leading slashes, then strip a leading .beans/ or exact .beans segment
+    // so agents that accidentally include it still resolve correctly.
+    const cleaned = relativePath
+      .trim()
+      .replace(/^\/+/, '')
+      .replace(/^\.beans(?:[\\/]|$)/, '');
     if (!cleaned) {
       throw new Error('Path is required');
     }
@@ -173,10 +226,59 @@ export class BeansCliBackend implements BackendInterface {
       filter.search = options.search;
     }
 
+    // Only cache unfiltered "list everything" calls — filtered/search calls
+    // are cheap queries and must always reflect the latest state.
+    const isCacheable = !filter.status && !filter.type && !filter.search;
+    const cacheKey = 'all';
+
+    if (isCacheable) {
+      const lastFetch = this._cacheTime.get(cacheKey) ?? 0;
+      const cached = this._cache.get(cacheKey);
+      const age = Date.now() - lastFetch;
+
+      // Within the burst window, skip even the timestamp check.
+      if (cached && age < BeansCliBackend.BURST_TTL_MS) {
+        return Array.from(cached.values());
+      }
+
+      // Outside the burst window, do a cheap timestamps-only fetch and compare.
+      if (cached) {
+        try {
+          const { data: tsData } = await this.executeGraphQL<{ beans: Array<{ id: string; updatedAt?: string }> }>(
+            graphql.LIST_BEANS_TIMESTAMPS_QUERY,
+          );
+          const timestamps = tsData.beans;
+          let dirty = timestamps.length !== cached.size;
+          if (!dirty) {
+            for (const { id, updatedAt } of timestamps) {
+              const existing = cached.get(id);
+              if (!existing || existing.updatedAt !== updatedAt) {
+                dirty = true;
+                break;
+              }
+            }
+          }
+          if (!dirty) {
+            // Nothing changed — return cached records and refresh the burst timer.
+            this._cacheTime.set(cacheKey, Date.now());
+            return Array.from(cached.values());
+          }
+        } catch {
+          // Timestamp check failed — fall through to a full fetch.
+        }
+      }
+    }
+
     const { data, errors } = await this.executeGraphQL<{ beans: BeanRecord[] }>(graphql.LIST_BEANS_QUERY, { filter });
 
     if (errors && errors.length > 0) {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
+    }
+
+    if (isCacheable) {
+      const byId = new Map(data.beans.map(b => [b.id, b]));
+      this._cache.set(cacheKey, byId);
+      this._cacheTime.set(cacheKey, Date.now());
     }
 
     return data.beans;
@@ -187,6 +289,7 @@ export class BeansCliBackend implements BackendInterface {
     type: string;
     status?: string;
     priority?: string;
+    body?: string;
     description?: string;
     parent?: string;
   }): Promise<BeanRecord> {
@@ -195,7 +298,7 @@ export class BeansCliBackend implements BackendInterface {
       type: input.type,
       status: input.status,
       priority: input.priority,
-      body: input.description,
+      body: input.body ?? input.description,
       parent: input.parent,
     };
 
@@ -207,6 +310,7 @@ export class BeansCliBackend implements BackendInterface {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
     }
 
+    this.invalidateCache();
     return data.createBean;
   }
 
@@ -305,6 +409,7 @@ export class BeansCliBackend implements BackendInterface {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
     }
 
+    this.invalidateCache();
     return data.updateBean;
   }
 
@@ -317,7 +422,65 @@ export class BeansCliBackend implements BackendInterface {
       throw new Error(`GraphQL error: ${errors.map(e => e.message).join(', ')}`);
     }
 
+    this.invalidateCache();
     return { deleted: true, beanId };
+  }
+
+  async bulkCreate(
+    beans: Array<{
+      title: string;
+      type: string;
+      status?: string;
+      priority?: string;
+      body?: string;
+      description?: string;
+      parent?: string;
+    }>,
+    defaultParent?: string,
+  ): Promise<Array<{ bean?: BeanRecord; error?: string }>> {
+    const results: Array<{ bean?: BeanRecord; error?: string }> = [];
+    for (const item of beans) {
+      try {
+        const bean = await this.create({
+          ...item,
+          parent: item.parent ?? defaultParent,
+        });
+        results.push({ bean });
+      } catch (error) {
+        results.push({ error: (error as Error).message });
+      }
+    }
+    return results;
+  }
+
+  async bulkUpdate(
+    beans: Array<{
+      beanId: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent?: string;
+      clearParent?: boolean;
+      blocking?: string[];
+      blockedBy?: string[];
+      body?: string;
+      bodyAppend?: string;
+      bodyReplace?: Array<{ old: string; new: string }>;
+      ifMatch?: string;
+    }>,
+    defaultParent?: string,
+  ): Promise<Array<{ beanId: string; bean?: BeanRecord; error?: string }>> {
+    const results: Array<{ beanId: string; bean?: BeanRecord; error?: string }> = [];
+    for (const { beanId, ...updates } of beans) {
+      try {
+        const resolvedParent = updates.parent ?? (updates.clearParent ? undefined : defaultParent);
+        const bean = await this.update(beanId, { ...updates, parent: resolvedParent });
+        results.push({ beanId, bean });
+      } catch (error) {
+        results.push({ beanId, error: (error as Error).message });
+      }
+    }
+    return results;
   }
 
   async openConfig(): Promise<{ configPath: string; content: string }> {
@@ -395,6 +558,151 @@ export class BeansCliBackend implements BackendInterface {
     };
   }
 
+  /**
+   * Split a YAML scalar value from any trailing inline comment.
+   * Understands single-quoted and double-quoted YAML strings so it won't
+   * mistake a `#` inside a quoted value for a comment delimiter.
+   */
+  private splitYamlInlineComment(value: string): { valuePart: string; commentPart: string } {
+    let inSingle = false;
+    let inDouble = false;
+
+    for (let i = 0; i < value.length; i += 1) {
+      const char = value[i];
+
+      if (inSingle) {
+        if (char === "'") {
+          if (value[i + 1] === "'") {
+            i += 1; // '' is a YAML escaped single-quote — skip both chars
+          } else {
+            inSingle = false;
+          }
+        }
+        continue;
+      }
+
+      if (inDouble) {
+        if (char === '\\') {
+          i += 1; // skip escape sequence second char
+          continue;
+        }
+        if (char === '"') {
+          inDouble = false;
+        }
+        continue;
+      }
+
+      if (char === "'") {
+        inSingle = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inDouble = true;
+        continue;
+      }
+
+      // A '#' preceded by whitespace starts an inline comment (YAML spec requires whitespace before '#').
+      if (char === '#' && i > 0 && /\s/.test(value[i - 1])) {
+        const valuePart = value.slice(0, i).trimEnd();
+        return {
+          valuePart,
+          commentPart: value.slice(valuePart.length),
+        };
+      }
+    }
+
+    return { valuePart: value, commentPart: '' };
+  }
+
+  /** Returns true when `value` looks like a YAML block scalar indicator (`>`, `|`, `>-`, `|-`, etc.) */
+  private isYamlBlockScalarIndicator(value: string): boolean {
+    return /^[>|][+-]?[0-9]*$/.test(value) || /^[>|][0-9]*[+-]?$/.test(value);
+  }
+
+  /** Escape a plain string for use inside a YAML double-quoted scalar. */
+  private escapeForYamlDoubleQuoted(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  /**
+   * Normalise a raw YAML title value to a double-quoted scalar.
+   * Handles: empty, already double-quoted, single-quoted (unescaping `''`),
+   * block-scalar indicators, and plain unquoted values.
+   */
+  private normalizeFrontmatterTitleValue(value: string): string {
+    const trimmed = value.trim();
+
+    if (trimmed === '') {
+      return '""';
+    }
+
+    // Block scalar indicator — leave as-is to avoid corrupting multi-line titles
+    if (this.isYamlBlockScalarIndicator(trimmed)) {
+      return value;
+    }
+
+    // Already correctly double-quoted
+    if (/^"(?:[^"\\]|\\[\s\S])*"$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    // Single-quoted: unescape '' → ' then re-encode for double-quoted YAML
+    if (/^'(?:[^']|'')*'$/.test(trimmed)) {
+      const inner = trimmed.slice(1, -1).replace(/''/g, "'");
+      return `"${this.escapeForYamlDoubleQuoted(inner)}"`;
+    }
+
+    // Plain unquoted value
+    return `"${this.escapeForYamlDoubleQuoted(trimmed)}"`;
+  }
+
+  /**
+   * Ensure every `title:` line in YAML frontmatter is double-quoted.
+   * Handles already-quoted (single or double), multi-word, and special-char values.
+   * Preserves inline comments and handles both LF and CRLF line endings.
+   */
+  private quoteFrontmatterTitles(content: string): string {
+    // Support both LF and CRLF opening delimiters
+    const crlfOpen = content.startsWith('---\r\n');
+    const lfOpen = content.startsWith('---\n');
+    if (!crlfOpen && !lfOpen) {
+      return content;
+    }
+
+    const eol = crlfOpen ? '\r\n' : '\n';
+    const openEnd = `---${eol}`.length;
+
+    // Find the closing "---" delimiter that follows a newline
+    const closeMarker = `${eol}---`;
+    const closeIdx = content.indexOf(closeMarker, openEnd);
+    if (closeIdx === -1) {
+      return content;
+    }
+
+    const frontmatter = content.slice(openEnd, closeIdx);
+    const rest = content.slice(closeIdx); // includes the eol + "---"
+
+    // Rewrite only the "title:" line — scan line by line, O(n).
+    const lines = frontmatter.split(eol);
+    const fixedLines = lines.map(line => {
+      if (!line.startsWith('title:')) {
+        return line;
+      }
+      const colonIdx = line.indexOf(':');
+      const afterColon = line.slice(colonIdx + 1);
+      const leadingSpace = afterColon.length - afterColon.trimStart().length;
+      const raw = afterColon.trimStart();
+
+      const { valuePart, commentPart } = this.splitYamlInlineComment(raw);
+      const normalized = this.normalizeFrontmatterTitleValue(valuePart);
+      const prefix = `title:${' '.repeat(Math.max(1, leadingSpace))}`;
+      return `${prefix}${normalized}${commentPart}`;
+    });
+
+    return `---${eol}${fixedLines.join(eol)}${rest}`;
+  }
+
   async readBeanFile(relativePath: string): Promise<{ path: string; content: string }> {
     const absolutePath = this.resolveBeanFilePath(relativePath);
     const content = await readFile(absolutePath, 'utf8');
@@ -403,9 +711,10 @@ export class BeansCliBackend implements BackendInterface {
 
   async editBeanFile(relativePath: string, content: string): Promise<{ path: string; bytes: number }> {
     const absolutePath = this.resolveBeanFilePath(relativePath);
+    const fixed = this.quoteFrontmatterTitles(content);
     await mkdir(dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, content, 'utf8');
-    return { path: absolutePath, bytes: Buffer.byteLength(content, 'utf8') };
+    await writeFile(absolutePath, fixed, 'utf8');
+    return { path: absolutePath, bytes: Buffer.byteLength(fixed, 'utf8') };
   }
 
   async createBeanFile(
@@ -414,16 +723,17 @@ export class BeansCliBackend implements BackendInterface {
     options?: { overwrite?: boolean },
   ): Promise<{ path: string; bytes: number; created: boolean }> {
     const absolutePath = this.resolveBeanFilePath(relativePath);
+    const fixed = this.quoteFrontmatterTitles(content);
     await mkdir(dirname(absolutePath), { recursive: true });
 
-    await writeFile(absolutePath, content, {
+    await writeFile(absolutePath, fixed, {
       encoding: 'utf8',
       flag: options?.overwrite ? 'w' : 'wx',
     });
 
     return {
       path: absolutePath,
-      bytes: Buffer.byteLength(content, 'utf8'),
+      bytes: Buffer.byteLength(fixed, 'utf8'),
       created: true,
     };
   }

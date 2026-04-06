@@ -37,3 +37,13 @@ export const DELETE_BEAN_MUTATION = `
     deleteBean(id: $id)
   }
 `;
+
+/**
+ * Lightweight query that fetches only id + updatedAt for all beans.
+ * Used by the cache layer to detect changes without pulling full records.
+ */
+export const LIST_BEANS_TIMESTAMPS_QUERY = `
+  query {
+    beans { id updatedAt }
+  }
+`;

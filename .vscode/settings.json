@@ -1,5 +1,9 @@
 {
   "editor.defaultFormatter": "oxc.oxc-vscode",
   "codeQL.githubDatabase.update": "never",
-  "beans.mcp.showStartupNotification": false
+  "beans.mcp.showStartupNotification": false,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "selfagency",
+    "projectKey": "selfagency_beans-mcp"
+  }
 }
