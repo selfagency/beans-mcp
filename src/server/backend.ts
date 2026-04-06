@@ -103,9 +103,9 @@ export class BeansCliBackend implements BackendInterface {
   // Cache
   // ---------------------------------------------------------------------------
 
-  /** Full records keyed by bean ID, grouped by serialised filter key. */
+  /** Full unfiltered records keyed by bean ID, stored under the fixed cache key `'all'`. */
   private readonly _cache = new Map<string, Map<string, BeanRecord>>();
-  /** Last time a particular filter key was fetched (ms). */
+  /** Last time the unfiltered cache entry `'all'` was fetched (ms). */
   private readonly _cacheTime = new Map<string, number>();
   /** Short-circuit TTL: skip even the timestamp check within this window (ms). */
   private static readonly BURST_TTL_MS = 5_000;
@@ -145,12 +145,12 @@ export class BeansCliBackend implements BackendInterface {
   }
 
   private resolveBeanFilePath(relativePath: string): string {
-    // Strip leading slashes, then strip a leading .beans/ or .beans prefix
+    // Strip leading slashes, then strip a leading .beans/ or exact .beans segment
     // so agents that accidentally include it still resolve correctly.
     const cleaned = relativePath
       .trim()
       .replace(/^\/+/, '')
-      .replace(/^\.beans[\\/]?/, '');
+      .replace(/^\.beans(?:[\\/]|$)/, '');
     if (!cleaned) {
       throw new Error('Path is required');
     }
@@ -559,60 +559,149 @@ export class BeansCliBackend implements BackendInterface {
   }
 
   /**
+   * Split a YAML scalar value from any trailing inline comment.
+   * Understands single-quoted and double-quoted YAML strings so it won't
+   * mistake a `#` inside a quoted value for a comment delimiter.
+   */
+  private splitYamlInlineComment(value: string): { valuePart: string; commentPart: string } {
+    let inSingle = false;
+    let inDouble = false;
+
+    for (let i = 0; i < value.length; i += 1) {
+      const char = value[i];
+
+      if (inSingle) {
+        if (char === "'") {
+          if (value[i + 1] === "'") {
+            i += 1; // '' is a YAML escaped single-quote — skip both chars
+          } else {
+            inSingle = false;
+          }
+        }
+        continue;
+      }
+
+      if (inDouble) {
+        if (char === '\\') {
+          i += 1; // skip escape sequence second char
+          continue;
+        }
+        if (char === '"') {
+          inDouble = false;
+        }
+        continue;
+      }
+
+      if (char === "'") {
+        inSingle = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inDouble = true;
+        continue;
+      }
+
+      // A '#' preceded by whitespace (or at position 0) starts an inline comment.
+      if (char === '#' && (i === 0 || /\s/.test(value[i - 1]))) {
+        const trailing = value.slice(0, i);
+        const trailingTrimLen = trailing.length - trailing.trimEnd().length;
+        return {
+          valuePart: trailing.trimEnd(),
+          commentPart: value.slice(i - trailingTrimLen),
+        };
+      }
+    }
+
+    return { valuePart: value, commentPart: '' };
+  }
+
+  /** Returns true when `value` looks like a YAML block scalar indicator (`>`, `|`, `>-`, `|-`, etc.) */
+  private isYamlBlockScalarIndicator(value: string): boolean {
+    return /^[>|][+-]?[0-9]*$/.test(value) || /^[>|][0-9]*[+-]?$/.test(value);
+  }
+
+  /** Escape a plain string for use inside a YAML double-quoted scalar. */
+  private escapeForYamlDoubleQuoted(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  /**
+   * Normalise a raw YAML title value to a double-quoted scalar.
+   * Handles: empty, already double-quoted, single-quoted (unescaping `''`),
+   * block-scalar indicators, and plain unquoted values.
+   */
+  private normalizeFrontmatterTitleValue(value: string): string {
+    const trimmed = value.trim();
+
+    if (trimmed === '') {
+      return '""';
+    }
+
+    // Block scalar indicator — leave as-is to avoid corrupting multi-line titles
+    if (this.isYamlBlockScalarIndicator(trimmed)) {
+      return value;
+    }
+
+    // Already correctly double-quoted
+    if (/^"(?:[^"\\]|\\[\s\S])*"$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    // Single-quoted: unescape '' → ' then re-encode for double-quoted YAML
+    if (/^'(?:[^']|'')*'$/.test(trimmed)) {
+      const inner = trimmed.slice(1, -1).replace(/''/g, "'");
+      return `"${this.escapeForYamlDoubleQuoted(inner)}"`;
+    }
+
+    // Plain unquoted value
+    return `"${this.escapeForYamlDoubleQuoted(trimmed)}"`;
+  }
+
+  /**
    * Ensure every `title:` line in YAML frontmatter is double-quoted.
    * Handles already-quoted (single or double), multi-word, and special-char values.
-   *
-   * Uses plain string splitting instead of backtracking regexes to guarantee
-   * linear-time processing and eliminate any ReDoS attack surface.
+   * Preserves inline comments and handles both LF and CRLF line endings.
    */
   private quoteFrontmatterTitles(content: string): string {
-    // Frontmatter must start at the very first line with "---"
-    if (!content.startsWith('---\n')) {
+    // Support both LF and CRLF opening delimiters
+    const crlfOpen = content.startsWith('---\r\n');
+    const lfOpen = content.startsWith('---\n');
+    if (!crlfOpen && !lfOpen) {
       return content;
     }
 
-    // Find the closing "---" delimiter.  indexOf is O(n) with no backtracking.
-    const openEnd = 4; // length of "---\n"
-    const closeMarker = '\n---';
+    const eol = crlfOpen ? '\r\n' : '\n';
+    const openEnd = `---${eol}`.length;
+
+    // Find the closing "---" delimiter that follows a newline
+    const closeMarker = `${eol}---`;
     const closeIdx = content.indexOf(closeMarker, openEnd);
     if (closeIdx === -1) {
       return content;
     }
 
     const frontmatter = content.slice(openEnd, closeIdx);
-    const rest = content.slice(closeIdx); // includes the "\n---"
+    const rest = content.slice(closeIdx); // includes the eol + "---"
 
     // Rewrite only the "title:" line — scan line by line, O(n).
-    const lines = frontmatter.split('\n');
+    const lines = frontmatter.split(eol);
     const fixedLines = lines.map(line => {
-      // Match "title:" with optional spaces — no regex quantifier backtracking.
       if (!line.startsWith('title:')) {
         return line;
       }
       const colonIdx = line.indexOf(':');
-      const raw = line.slice(colonIdx + 1).trimStart();
+      const afterColon = line.slice(colonIdx + 1);
+      const leadingSpace = afterColon.length - afterColon.trimStart().length;
+      const raw = afterColon.trimStart();
 
-      // Already double-quoted: check first and last char only — O(1).
-      if (raw.length >= 2 && raw[0] === '"' && raw[raw.length - 1] === '"') {
-        return line;
-      }
-      // Already single-quoted: normalise to double quotes.
-      // In YAML single-quoted strings '' is the only escape (literal single quote).
-      // Backslash is NOT special, so it must be escaped when moving to double-quoted style.
-      if (raw.length >= 2 && raw[0] === "'" && raw[raw.length - 1] === "'") {
-        const inner = raw
-          .slice(1, -1)
-          .replaceAll("''", "'") // unescape YAML single-quote escape sequences
-          .replaceAll('\\', '\\\\') // escape backslashes for double-quoted YAML
-          .replaceAll('"', '\\"'); // escape double-quotes for double-quoted YAML
-        return `title: "${inner}"`;
-      }
-      // Unquoted: escape backslashes first, then double-quotes, then wrap.
-      const escaped = raw.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-      return `title: "${escaped}"`;
+      const { valuePart, commentPart } = this.splitYamlInlineComment(raw);
+      const normalized = this.normalizeFrontmatterTitleValue(valuePart);
+      const prefix = `title:${' '.repeat(Math.max(1, leadingSpace))}`;
+      return `${prefix}${normalized}${commentPart}`;
     });
 
-    return `---\n${fixedLines.join('\n')}${rest}`;
+    return `---${eol}${fixedLines.join(eol)}${rest}`;
   }
 
   async readBeanFile(relativePath: string): Promise<{ path: string; content: string }> {
