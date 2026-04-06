@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
 import { buildTokenUserConfig, normalizeRegistry, resolveNpmPublishAuth } from './lib/npm-auth.js';
+import { buildRollbackPlan, getReleaseMetadataFiles, resolveOtpItemId } from './lib/release-state.js';
 
 $.verbose = false;
 
@@ -39,6 +40,10 @@ let commitPushed = false;
 let tagPushed = false;
 let releaseDone = false;
 let gitCmd = 'git';
+let githubReleaseCreated = false;
+let githubClient = null;
+let githubOwner = '';
+let githubRepo = '';
 
 function runGit(args, options = {}) {
   const result = spawnSync(gitCmd, args, {
@@ -78,10 +83,36 @@ function resolveGitExecutable() {
 }
 
 async function rollback() {
-  if (releaseDone) {return;}
+  const plan = buildRollbackPlan({
+    commitLocal,
+    commitPushed,
+    tagPushed,
+    githubReleaseCreated,
+    releaseDone,
+  });
+
+  if (!plan.deleteGitHubRelease && !plan.deleteTag && !plan.revertCommit && !plan.resetLocalCommit) {
+    return;
+  }
+
   $.verbose = false;
   try {
-    if (tagPushed) {
+    if (plan.deleteGitHubRelease && githubClient && githubOwner && githubRepo) {
+      console.log(`\n⚠️  npm publish failed after creating GitHub release ${tag}. Deleting GitHub release...`);
+      try {
+        const release = await githubClient.repos.getReleaseByTag({ owner: githubOwner, repo: githubRepo, tag });
+        await githubClient.repos.deleteRelease({ owner: githubOwner, repo: githubRepo, release_id: release.data.id });
+        githubReleaseCreated = false;
+        console.log(`↩️  GitHub release ${tag} deleted.`);
+      } catch (error) {
+        if (error?.status !== 404) {
+          console.error(`❌ Could not delete GitHub release ${tag}. Manually run:`);
+          console.error(`   gh release delete ${tag} -y`);
+        }
+      }
+    }
+
+    if (plan.deleteTag) {
       console.log(`\n⚠️  Release workflow failed or was interrupted. Deleting remote tag ${tag}...`);
       try {
         runGit(['push', 'origin', '--delete', tag]);
@@ -92,7 +123,7 @@ async function rollback() {
         console.error(`   git push origin --delete ${tag} && git tag -d ${tag}`);
       }
     }
-    if (commitPushed) {
+    if (plan.revertCommit) {
       console.log('\n⚠️  Reverting release commit on origin/main...');
       try {
         runGit(['revert', '--no-edit', 'HEAD']);
@@ -102,7 +133,7 @@ async function rollback() {
         console.error('❌ Automatic revert failed. Manually run:');
         console.error('   git revert HEAD && git push origin main');
       }
-    } else if (commitLocal) {
+    } else if (plan.resetLocalCommit) {
       console.log('\n⚠️  Release aborted before push. Resetting local release commit...');
       try {
         runGit(['reset', '--hard', 'HEAD~1']);
@@ -202,6 +233,7 @@ async function main() {
   }
 
   const octokit = new Octokit({ auth: githubToken });
+  githubClient = octokit;
 
   // --- Precondition checks --------------------------------------------------
 
@@ -229,6 +261,8 @@ async function main() {
     process.exit(1);
   }
   const [, owner, repo] = repoMatch;
+  githubOwner = owner;
+  githubRepo = repo;
 
   // Check for existing local tag.
   const localTag = runGit(['tag', '-l', tag]).stdout.trim();
@@ -336,10 +370,11 @@ async function main() {
 
   // --- Commit + push --------------------------------------------------------
 
-  const hasChanges = runGit(['diff', '--name-only', '--', 'package.json', 'CHANGELOG.md']).stdout.trim();
+  const releaseMetadataFiles = getReleaseMetadataFiles();
+  const hasChanges = runGit(['diff', '--name-only', '--', ...releaseMetadataFiles]).stdout.trim();
   if (hasChanges) {
     console.log('📦 Committing release metadata changes...');
-    runGit(['add', 'package.json', 'CHANGELOG.md']);
+    runGit(['add', ...releaseMetadataFiles]);
     runGit(['commit', '-m', `chore(release): update version and changelog for ${tag}`]);
     commitLocal = true;
   } else {
@@ -395,7 +430,7 @@ async function main() {
     branch: null,
   });
 
-  releaseDone = true;
+  githubReleaseCreated = true;
   console.log(`✅ GitHub release complete: ${tag} → ${headSha}`);
 
   // --- npm publish ----------------------------------------------------------
@@ -408,13 +443,19 @@ async function main() {
   const distTag = version.includes('-') ? 'next' : 'latest';
   console.log(`🚀 Publishing ${tag} to npm (dist-tag: ${distTag})...`);
   $.verbose = true;
+  const otpItemId = resolveOtpItemId(process.env);
   // For scoped public packages, --access public is required on first publish; harmless on subsequent publishes.
   const accessFlag = (JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).name || '').startsWith('@')
     ? ['--access', 'public']
     : [];
   try {
-    await $`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag}`;
+    const otp = (await $`op item get ${otpItemId} --otp`).stdout.trim();
+    if (!otp) {
+      throw new Error(`Failed to retrieve npm OTP from 1Password item ${otpItemId}`);
+    }
+    await $`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag} --otp=${otp}`;
     $.verbose = false;
+    releaseDone = true;
     console.log(`✅ Published ${tag} to npm.`);
   } catch (err) {
     $.verbose = false;

@@ -6,6 +6,12 @@ import {
   resolveNpmPublishAuth,
 } from '../../scripts/lib/npm-auth.js';
 import { createDistPackage } from '../../scripts/lib/dist-package.js';
+import {
+  buildRollbackPlan,
+  DEFAULT_NPM_OTP_1PASSWORD_ITEM,
+  getReleaseMetadataFiles,
+  resolveOtpItemId,
+} from '../../scripts/lib/release-state.js';
 
 describe('npm auth helpers', () => {
   it('prefers NPM_TOKEN over npmrc auth', () => {
@@ -59,5 +65,49 @@ describe('createDistPackage', () => {
 
     expect(distPkg.bin).toEqual({ 'beans-mcp': 'beans-mcp-server.cjs' });
     expect(distPkg.files).toEqual(['index.cjs', 'index.js', 'index.d.ts', 'beans-mcp-server.cjs']);
+  });
+});
+
+describe('release state helpers', () => {
+  it('includes server.json in release metadata files', () => {
+    expect(getReleaseMetadataFiles()).toEqual(['package.json', 'server.json', 'CHANGELOG.md']);
+  });
+
+  it('uses the default 1Password item when no env override exists', () => {
+    expect(resolveOtpItemId({})).toBe(DEFAULT_NPM_OTP_1PASSWORD_ITEM);
+  });
+
+  it('builds rollback actions for publish failures after GitHub release creation', () => {
+    expect(
+      buildRollbackPlan({
+        commitLocal: false,
+        commitPushed: true,
+        tagPushed: true,
+        githubReleaseCreated: true,
+        releaseDone: false,
+      }),
+    ).toEqual({
+      deleteGitHubRelease: true,
+      deleteTag: true,
+      revertCommit: true,
+      resetLocalCommit: false,
+    });
+  });
+
+  it('does not roll back once the full release completed', () => {
+    expect(
+      buildRollbackPlan({
+        commitLocal: false,
+        commitPushed: true,
+        tagPushed: true,
+        githubReleaseCreated: true,
+        releaseDone: true,
+      }),
+    ).toEqual({
+      deleteGitHubRelease: false,
+      deleteTag: false,
+      revertCommit: false,
+      resetLocalCommit: false,
+    });
   });
 });
