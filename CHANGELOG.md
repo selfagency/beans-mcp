@@ -13,39 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Source: changes from v0.5.1 to v0.5.2._
 
-
 ## [0.5.1] - 2026-04-06
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.5.0...v0.5.1
 
 _Source: changes from v0.5.0 to v0.5.1._
 
-
 ## [0.5.0] - 2026-04-06
 
 ## What's Changed
-* chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/2
-* chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/4
-* feat: bulk create/update, body on create, path stripping, frontmatter quoting, list caching by @selfagency in https://github.com/selfagency/beans-mcp/pull/5
+
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/2
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/4
+- feat: bulk create/update, body on create, path stripping, frontmatter quoting, list caching by @selfagency in https://github.com/selfagency/beans-mcp/pull/5
 
 ## New Contributors
-* @dependabot[bot] made their first contribution in https://github.com/selfagency/beans-mcp/pull/2
+
+- @dependabot[bot] made their first contribution in https://github.com/selfagency/beans-mcp/pull/2
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.4.2...v0.5.0
 
 _Source: changes from v0.4.2 to v0.5.0._
 
-
 ## [0.4.2] - 2026-03-13
 
 ## What's Changed
-* feat: align MCP server with Beans 0.4.x + prime workflow by @selfagency in https://github.com/selfagency/beans-mcp/pull/3
 
+- feat: align MCP server with Beans 0.4.x + prime workflow by @selfagency in https://github.com/selfagency/beans-mcp/pull/3
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.4...v0.4.2
 
 _Source: changes from v0.1.4 to v0.4.2._
-
 
 ### Changed
 
@@ -69,26 +67,25 @@ _Source: changes from v0.1.4 to v0.4.2._
 
 _Source: changes from v0.1.3 to v0.1.4._
 
-
 ## [0.1.3] - 2026-02-27
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.2...v0.1.3
 
 _Source: changes from v0.1.2 to v0.1.3._
 
-
 ## [0.1.2] - 2026-02-27
 
 ## What's Changed
-* feat: support body updates and de-duplicate MCP results by @selfagency in https://github.com/selfagency/beans-mcp/pull/1
+
+- feat: support body updates and de-duplicate MCP results by @selfagency in https://github.com/selfagency/beans-mcp/pull/1
 
 ## New Contributors
-* @selfagency made their first contribution in https://github.com/selfagency/beans-mcp/pull/1
+
+- @selfagency made their first contribution in https://github.com/selfagency/beans-mcp/pull/1
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.1.1...v0.1.2
 
 _Source: changes from v0.1.1 to v0.1.2._
-
 
 ## [0.1.1] - 2026-02-25
 
@@ -96,11 +93,9 @@ _Source: changes from v0.1.1 to v0.1.2._
 
 _Source: changes from v0.1.0 to v0.1.1._
 
-
 ## [0.1.0] - 2026-02-25
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/commits/v0.1.0
-
 
 Initial public release. Extracted and substantially reworked from the
 [selfagency.beans-vscode](https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode)

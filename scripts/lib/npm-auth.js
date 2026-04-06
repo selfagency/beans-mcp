@@ -60,9 +60,5 @@ export function resolveNpmPublishAuth({ env, registry, userConfigContent }) {
 export function buildTokenUserConfig({ registry, token }) {
   const normalizedRegistry = normalizeRegistry(registry);
   const authKey = getRegistryAuthKey(normalizedRegistry);
-  return [
-    `registry=${normalizedRegistry}`,
-    `${authKey}=${token}`,
-    'always-auth=true',
-  ].join('\n') + '\n';
+  return [`registry=${normalizedRegistry}`, `${authKey}=${token}`, 'always-auth=true'].join('\n') + '\n';
 }

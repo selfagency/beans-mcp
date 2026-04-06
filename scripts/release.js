@@ -65,14 +65,16 @@ function runGit(args, options = {}) {
 
 function resolveGitExecutable() {
   const direct = spawnSync('git', ['--version'], { stdio: 'ignore', shell: false });
-  if (direct.status === 0) {return 'git';}
+  if (direct.status === 0) {
+    return 'git';
+  }
 
   const locatorCommand = process.platform === 'win32' ? 'where' : 'which';
   const located = spawnSync(locatorCommand, ['git'], { encoding: 'utf8', shell: false });
   if (located.status === 0) {
     const candidate = located.stdout
       .split(/\r?\n/)
-      .map((line) => line.trim())
+      .map(line => line.trim())
       .find(Boolean);
     if (candidate) {
       return candidate;
@@ -142,11 +144,19 @@ async function rollback() {
         console.error('❌ Reset failed. Manually run: git reset --hard HEAD~1');
       }
     }
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
-process.on('SIGINT', async () => { await rollback(); process.exit(130); });
-process.on('SIGTERM', async () => { await rollback(); process.exit(143); });
+process.on('SIGINT', async () => {
+  await rollback();
+  process.exit(130);
+});
+process.on('SIGTERM', async () => {
+  await rollback();
+  process.exit(143);
+});
 
 // ---------------------------------------------------------------------------
 // Main — wrapped so any unhandled error triggers rollback
@@ -167,9 +177,7 @@ async function main() {
   // `npm whoami` to prompt for interactive login even when a token exists.
   const defaultUserConfigPath = process.env.NPM_CONFIG_USERCONFIG || resolve(homedir(), '.npmrc');
   const NPM_REGISTRY = normalizeRegistry(process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/');
-  const existingUserConfig = existsSync(defaultUserConfigPath)
-    ? readFileSync(defaultUserConfigPath, 'utf8')
-    : '';
+  const existingUserConfig = existsSync(defaultUserConfigPath) ? readFileSync(defaultUserConfigPath, 'utf8') : '';
   const publishAuth = resolveNpmPublishAuth({
     env: process.env,
     registry: NPM_REGISTRY,
@@ -181,7 +189,9 @@ async function main() {
     console.error('   Tips:');
     console.error('   - Export NPM_TOKEN or NODE_AUTH_TOKEN before running the release script');
     console.error(`   - Or ensure ${defaultUserConfigPath} contains //registry.npmjs.org/:_authToken=<YOUR_TOKEN>`);
-    console.error('   - If your npm account requires 2FA for writes, the token must have write access and Bypass 2FA enabled');
+    console.error(
+      '   - If your npm account requires 2FA for writes, the token must have write access and Bypass 2FA enabled',
+    );
     process.exit(1);
   }
 
@@ -213,7 +223,7 @@ async function main() {
     console.error(`❌ Not logged in to npm (registry: ${NPM_REGISTRY}).`);
     console.error('   Tips:');
     console.error(`   - Ensure your token is in ${npmUserConfigPath}`);
-    console.error("   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>");
+    console.error('   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>');
     console.error('   - Or export NPM_TOKEN in your environment before running the release script');
     console.error('   - If npm still asks for OTP, use a granular token with write access and Bypass 2FA enabled');
     console.error('   - To log in interactively: npm login --registry=https://registry.npmjs.org/');
@@ -292,16 +302,17 @@ async function main() {
     per_page: 100,
   });
 
-  const previousTag = tagsResp
-    .map((r) => r.ref.replace('refs/tags/', ''))
-    .filter((t) => t !== tag)
-    .sort((a, b) => {
-      const parse = (v) => v.replace(/^v/, '').split('.').map(Number);
-      const [aMaj, aMin, aPatch] = parse(a);
-      const [bMaj, bMin, bPatch] = parse(b);
-      return aMaj - bMaj || aMin - bMin || aPatch - bPatch;
-    })
-    .at(-1) ?? '';
+  const previousTag =
+    tagsResp
+      .map(r => r.ref.replace('refs/tags/', ''))
+      .filter(t => t !== tag)
+      .sort((a, b) => {
+        const parse = v => v.replace(/^v/, '').split('.').map(Number);
+        const [aMaj, aMin, aPatch] = parse(a);
+        const [bMaj, bMin, bPatch] = parse(b);
+        return aMaj - bMaj || aMin - bMin || aPatch - bPatch;
+      })
+      .at(-1) ?? '';
 
   // --- Release notes --------------------------------------------------------
 
@@ -315,7 +326,6 @@ async function main() {
     ...(previousTag ? { previous_tag_name: previousTag } : {}),
   });
   const releaseNotes = notesResp.data.body?.trim() || '- No notable changes.';
-
 
   // --- Update package.json --------------------------------------------------
   console.log(`🧩 Updating package.json to ${version}...`);
@@ -449,6 +459,9 @@ async function main() {
     ? ['--access', 'public']
     : [];
   try {
+    if (!otpItemId) {
+      throw new Error('Set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) before running the release script');
+    }
     const otp = (await $`op item get ${otpItemId} --otp`).stdout.trim();
     if (!otp) {
       throw new Error(`Failed to retrieve npm OTP from 1Password item ${otpItemId}`);
@@ -486,7 +499,7 @@ async function waitForWorkflow(
 ) {
   // Resolve the workflow ID by name.
   const workflowsResp = await octokit.actions.listRepoWorkflows({ owner, repo, per_page: 100 });
-  const workflow = workflowsResp.data.workflows.find((w) => w.name === name);
+  const workflow = workflowsResp.data.workflows.find(w => w.name === name);
   if (!workflow) {
     spinner.fail(`${name}: workflow not found in ${owner}/${repo}`);
     throw new Error(`[${name}] workflow not found in ${owner}/${repo}`);
@@ -509,7 +522,7 @@ async function waitForWorkflow(
     });
 
     // Find the latest run that isn't one we already marked as cancelled.
-    const run = runsResp.data.workflow_runs.find((r) => !cancelledRunIds.has(r.id));
+    const run = runsResp.data.workflow_runs.find(r => !cancelledRunIds.has(r.id));
 
     if (!run) {
       if (autoDispatch && !triggered) {
@@ -548,7 +561,7 @@ async function waitForWorkflow(
 // Entry point
 // ---------------------------------------------------------------------------
 
-main().catch(async (err) => {
+main().catch(async err => {
   const msg = err?.message ?? String(err);
   // ProcessOutput errors from zx already printed the command output; only
   // print extra context for our own thrown errors.

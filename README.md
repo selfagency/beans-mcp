@@ -392,11 +392,11 @@ npm install beans-mcp
 ### Example
 
 ```typescript
-import { createBeansMcpServer, parseCliArgs } from "@selfagency/beans-mcp";
+import { createBeansMcpServer, parseCliArgs } from '@selfagency/beans-mcp';
 
 const server = await createBeansMcpServer({
-  workspaceRoot: "/path/to/workspace",
-  cliPath: "beans", // or path to beans CLI
+  workspaceRoot: '/path/to/workspace',
+  cliPath: 'beans', // or path to beans CLI
 });
 
 // Connect to stdio transport or your own transport

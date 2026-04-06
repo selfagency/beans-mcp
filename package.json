@@ -3,41 +3,40 @@
   "version": "0.5.0",
   "private": false,
   "description": "MCP (Model Context Protocol) server for Beans issue tracker",
+  "keywords": [
+    "ai",
+    "beans",
+    "issue-tracker",
+    "mcp",
+    "model-context-protocol"
+  ],
+  "homepage": "https://github.com/selfagency/beans-mcp",
+  "bugs": {
+    "url": "https://github.com/selfagency/beans-mcp/issues"
+  },
+  "license": "MIT",
   "author": {
     "name": "Daniel Sieradski",
     "email": "daniel@self.agency",
     "url": "https://self.agency"
   },
-  "homepage": "https://github.com/selfagency/beans-mcp",
-  "bugs": {
-    "url": "https://github.com/selfagency/beans-mcp/issues"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/selfagency/beans-mcp.git"
   },
-  "mcpName": "io.github.selfagency/beans-mcp",
-  "keywords": [
-    "beans",
-    "mcp",
-    "model-context-protocol",
-    "issue-tracker",
-    "ai"
-  ],
-  "license": "MIT",
+  "bin": {
+    "beans-mcp": "dist/beans-mcp-server.cjs"
+  },
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
-  },
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "bin": {
-    "beans-mcp": "dist/beans-mcp-server.cjs"
   },
   "scripts": {
     "build": "tsup",
@@ -70,13 +69,14 @@
     "zod": "4.3.6",
     "zx": "^8.8.5"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "lint-staged": {
     "src/**/*.ts": [
       "pnpm run lint:fix",
       "pnpm run format"
     ]
-  }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "mcpName": "io.github.selfagency/beans-mcp"
 }

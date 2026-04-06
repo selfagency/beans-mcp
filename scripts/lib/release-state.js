@@ -1,11 +1,11 @@
-export const DEFAULT_NPM_OTP_1PASSWORD_ITEM = 'REMOVED_1PASSWORD_ITEM_ID';
+export const DEFAULT_NPM_OTP_1PASSWORD_ITEM = '';
 
 export function getReleaseMetadataFiles() {
   return ['package.json', 'server.json', 'CHANGELOG.md'];
 }
 
 export function resolveOtpItemId(env) {
-  return env.NPM_OTP_1PASSWORD_ITEM?.trim() || DEFAULT_NPM_OTP_1PASSWORD_ITEM;
+  return env.NPM_OTP_1PASSWORD_ITEM?.trim() || env.DEFAULT_NPM_OTP_1PASSWORD_ITEM?.trim() || DEFAULT_NPM_OTP_1PASSWORD_ITEM;
 }
 
 export function buildRollbackPlan({ commitLocal, commitPushed, tagPushed, githubReleaseCreated, releaseDone }) {

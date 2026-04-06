@@ -2,11 +2,7 @@
  * Public types for beans-mcp-server
  */
 
-export type SortMode =
-  | "status-priority-type-title"
-  | "updated"
-  | "created"
-  | "id";
+export type SortMode = 'status-priority-type-title' | 'updated' | 'created' | 'id';
 
 export type BeanRecord = {
   id: string;

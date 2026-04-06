@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createDistPackage } from '../../scripts/lib/dist-package.js';
 import {
   buildTokenUserConfig,
   extractAuthTokenFromNpmrc,
   getRegistryAuthKey,
   resolveNpmPublishAuth,
 } from '../../scripts/lib/npm-auth.js';
-import { createDistPackage } from '../../scripts/lib/dist-package.js';
 import {
   buildRollbackPlan,
   DEFAULT_NPM_OTP_1PASSWORD_ITEM,
@@ -73,8 +73,16 @@ describe('release state helpers', () => {
     expect(getReleaseMetadataFiles()).toEqual(['package.json', 'server.json', 'CHANGELOG.md']);
   });
 
-  it('uses the default 1Password item when no env override exists', () => {
-    expect(resolveOtpItemId({})).toBe(DEFAULT_NPM_OTP_1PASSWORD_ITEM);
+  it('has no built-in 1Password item default', () => {
+    expect(DEFAULT_NPM_OTP_1PASSWORD_ITEM).toBe('');
+    expect(resolveOtpItemId({})).toBe('');
+  });
+
+  it('prefers explicit env overrides for the OTP item', () => {
+    expect(resolveOtpItemId({ DEFAULT_NPM_OTP_1PASSWORD_ITEM: 'fallback-item' })).toBe('fallback-item');
+    expect(
+      resolveOtpItemId({ NPM_OTP_1PASSWORD_ITEM: 'release-item', DEFAULT_NPM_OTP_1PASSWORD_ITEM: 'fallback-item' }),
+    ).toBe('release-item');
   });
 
   it('builds rollback actions for publish failures after GitHub release creation', () => {

@@ -566,7 +566,15 @@ describe('MutableBackend', () => {
       bulkUpdate: vi.fn(async (beans: Array<{ beanId: string }>) =>
         beans.map(b => ({
           beanId: b.beanId,
-          bean: { id: b.beanId, slug: b.beanId, path: `${b.beanId}.md`, title: 'T', body: '', status: 'todo', type: 'task' },
+          bean: {
+            id: b.beanId,
+            slug: b.beanId,
+            path: `${b.beanId}.md`,
+            title: 'T',
+            body: '',
+            status: 'todo',
+            type: 'task',
+          },
         })),
       ),
       openConfig: vi.fn(async () => ({ configPath: '/cfg', content: '{}' })),
