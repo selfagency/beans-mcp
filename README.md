@@ -30,22 +30,29 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 
 ## Summary of public MCP tools
 
-- `beans_init` — Initialize the workspace (optional `prefix`).
-- `beans_view` — Fetch full bean details by `beanId` or `beanIds`.
-- `beans_create` — Create a new bean (title/type + optional fields).
-- `beans_update` — Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`).
-- `beans_delete` — Delete one or many beans (`beanId` or `beanIds`, optional `force`).
-- `beans_reopen` — Reopen a completed or scrapped bean to an active status.
-- `beans_query` — Unified list/search/filter/sort/ready/llm_context/open_config operations.
-- `beans_bean_file` — Read/edit/create/delete files under `.beans`.
-- `beans_output` — Read extension output logs or show guidance.
+| Tool | Description |
+| --- | --- |
+| `beans_init` | Initialize the workspace (optional `prefix`). |
+| `beans_view` | Fetch full bean details by `beanId` or `beanIds`. |
+| `beans_create` | Create a new bean (title/type + optional body/parent). |
+| `beans_bulk_create` | Create multiple beans in one call, optionally under a shared parent. |
+| `beans_update` | Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`). |
+| `beans_bulk_update` | Update multiple beans in one call, optionally reassigning them to a shared parent. |
+| `beans_delete` | Delete one or many beans (`beanId` or `beanIds`, optional `force`). |
+| `beans_reopen` | Reopen a completed or scrapped bean to an active status. |
+| `beans_query` | Unified list/search/filter/sort/ready/llm_context/open_config operations. |
+| `beans_bean_file` | Read/edit/create/delete files under `.beans`. |
+| `beans_output` | Read extension output logs or show guidance. |
 
 ### Notes
 
 - The `beans_query` tool is intentionally broad: prefer it for listing, searching, filtering or sorting beans, and for generating Copilot instructions (`operation: 'llm_context'`).
-- All file and log operations validate paths to keep them within the workspace or the VS Code log directory.
+- All file and log operations validate paths to keep them within the workspace or the VS Code log directory. The `.beans/` prefix is automatically stripped from paths — you can pass either `some-bean.md` or `.beans/some-bean.md` and the result is the same.
 - `beans_update` replaces many fine-grained update tools; callers should use it to keep the public tool surface small and predictable.
-- Version mismatches are warning-only and non-blocking by design.
+- `beans_bulk_create` and `beans_bulk_update` are best-effort: they process each item sequentially and return a per-item result array with success/error entries rather than failing atomically.
+- Frontmatter `title:` values are automatically double-quoted on write. Pass raw titles — quoting and escaping is handled for you.
+- Unfiltered list results are cached with a short burst TTL and a timestamp-probe refresh strategy. Mutation tools (`beans_create`, `beans_update`, `beans_delete`, etc.) invalidate the cache immediately.
+- Version mismatches between `beans-mcp` and the Beans CLI are warning-only and non-blocking by design.
 
 ## Examples
 
@@ -104,9 +111,12 @@ Request:
   "type": "feature",
   "status": "todo",
   "priority": "normal",
-  "description": "Implement theme toggle and styles"
+  "body": "Implement theme toggle and styles",
+  "parent": "epic-123"
 }
 ```
+
+> `description` is accepted as a deprecated alias for `body`.
 
 Response (structuredContent):
 
@@ -120,6 +130,70 @@ Response (structuredContent):
   }
 }
 ```
+
+### beans_bulk_create
+
+Request:
+
+```json
+{
+  "parent": "epic-123",
+  "beans": [
+    { "title": "Design mockups", "type": "task" },
+    { "title": "Implement API", "type": "task", "priority": "high" },
+    { "title": "Write tests", "type": "task", "parent": "epic-456" }
+  ]
+}
+```
+
+The top-level `parent` is applied as a default to any bean that does not specify its own `parent`. Here `Design mockups` and `Implement API` are assigned to `epic-123`; `Write tests` overrides with `epic-456`.
+
+Response (structuredContent):
+
+```json
+{
+  "requestedCount": 3,
+  "successCount": 3,
+  "failedCount": 0,
+  "results": [
+    { "bean": { "id": "task-1", "title": "Design mockups" } },
+    { "bean": { "id": "task-2", "title": "Implement API" } },
+    { "bean": { "id": "task-3", "title": "Write tests" } }
+  ]
+}
+```
+
+### beans_bulk_update
+
+Request (move a batch of tasks to in-progress and assign them to a parent):
+
+```json
+{
+  "parent": "epic-123",
+  "beans": [
+    { "beanId": "task-1", "status": "in-progress" },
+    { "beanId": "task-2", "status": "in-progress" },
+    { "beanId": "task-3", "status": "in-progress", "parent": "epic-456" }
+  ]
+}
+```
+
+Response (structuredContent):
+
+```json
+{
+  "requestedCount": 3,
+  "successCount": 3,
+  "failedCount": 0,
+  "results": [
+    { "beanId": "task-1", "bean": { "id": "task-1", "status": "in-progress" } },
+    { "beanId": "task-2", "bean": { "id": "task-2", "status": "in-progress" } },
+    { "beanId": "task-3", "bean": { "id": "task-3", "status": "in-progress" } }
+  ]
+}
+```
+
+> Both bulk tools are best-effort: partial failures are reported per-item rather than aborting the whole batch.
 
 ### beans_update
 
