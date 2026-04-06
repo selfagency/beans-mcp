@@ -433,7 +433,7 @@ describe('createBeansMcpServer', () => {
       body: '## Description\nSome markdown content',
     });
 
-    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.calls.slice(-1)[0][0];
+    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.lastCall?.[0];
     expect(lastCall.body).toBe('## Description\nSome markdown content');
   });
 
@@ -449,7 +449,7 @@ describe('createBeansMcpServer', () => {
       description: 'legacy body text',
     });
 
-    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.calls.slice(-1)[0][0];
+    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.lastCall?.[0];
     // description is a deprecated alias — it must be forwarded to the backend
     expect(lastCall.description ?? lastCall.body).toBe('legacy body text');
   });

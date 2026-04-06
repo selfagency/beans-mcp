@@ -602,13 +602,12 @@ export class BeansCliBackend implements BackendInterface {
         continue;
       }
 
-      // A '#' preceded by whitespace (or at position 0) starts an inline comment.
-      if (char === '#' && (i === 0 || /\s/.test(value[i - 1]))) {
-        const trailing = value.slice(0, i);
-        const trailingTrimLen = trailing.length - trailing.trimEnd().length;
+      // A '#' preceded by whitespace starts an inline comment (YAML spec requires whitespace before '#').
+      if (char === '#' && i > 0 && /\s/.test(value[i - 1])) {
+        const valuePart = value.slice(0, i).trimEnd();
         return {
-          valuePart: trailing.trimEnd(),
-          commentPart: value.slice(i - trailingTrimLen),
+          valuePart,
+          commentPart: value.slice(valuePart.length),
         };
       }
     }
