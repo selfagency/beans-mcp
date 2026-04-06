@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-06
+
+## What's Changed
+* chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/2
+* chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/4
+* feat: bulk create/update, body on create, path stripping, frontmatter quoting, list caching by @selfagency in https://github.com/selfagency/beans-mcp/pull/5
+
+## New Contributors
+* @dependabot[bot] made their first contribution in https://github.com/selfagency/beans-mcp/pull/2
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.4.2...v0.5.0
+
+_Source: changes from v0.4.2 to v0.5.0._
+
+
 ## [0.4.2] - 2026-03-13
 
 ## What's Changed
