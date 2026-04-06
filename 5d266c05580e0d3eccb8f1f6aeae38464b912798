@@ -1,0 +1,23 @@
+tsconfig.json
+  1911d262766a97e5 22,24-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "5d266c05580e0d3eccb8f1f6aeae38464b912798",
+  "prompts": {
+    "1911d262766a97e5": {
+      "agent_id": {
+        "tool": "github-copilot-tab",
+        "id": "ai_tab-1775448755162",
+        "model": "default"
+      },
+      "human_author": "Daniel Sieradski",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
