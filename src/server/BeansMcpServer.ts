@@ -2,6 +2,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { z } from 'zod';
+// Log package version on startup to help diagnose runtime package mismatches
+// Note: resolveJsonModule is enabled in tsconfig, so we can import package.json safely.
+// Always log to stderr to avoid interfering with MCP stdio transport on stdout.
+import pkgJson from '../../package.json';
 import { handleQueryOperation, sortBeans } from '../internal/queryHelpers';
 import {
   DEFAULT_MCP_PORT,
@@ -12,10 +16,7 @@ import {
   MAX_TITLE_LENGTH,
 } from '../types';
 import { makeTextAndStructured } from '../utils';
-// Log package version on startup to help diagnose runtime package mismatches
-// Note: resolveJsonModule is enabled in tsconfig, so we can import package.json safely.
-// Always log to stderr to avoid interfering with MCP stdio transport on stdout.
-import pkgJson from '../../package.json' assert { type: 'json' };
+
 import type { BackendInterface } from './backend';
 
 export { sortBeans };
@@ -114,7 +115,12 @@ export function viewHandler(backend: BackendInterface) {
     const found = ids.map(id => byId.get(id)).filter(Boolean);
     const missingBeanIds = ids.filter(id => !byId.has(id));
 
-    return makeTextAndStructured({ beans: found, missingBeanIds, count: found.length, requestedCount: ids.length });
+    return makeTextAndStructured({
+      beans: found,
+      missingBeanIds,
+      count: found.length,
+      requestedCount: ids.length,
+    });
   };
 }
 
@@ -144,6 +150,7 @@ export function createHandler(backend: BackendInterface) {
     type: string;
     status?: string;
     priority?: string;
+    body?: string;
     description?: string;
     parent?: string;
   }) => makeTextAndStructured({ bean: await backend.create(input) });
@@ -255,7 +262,11 @@ export function deleteHandler(backend: BackendInterface) {
         await backend.delete(id);
         results.push({ beanId: id, deleted: true });
       } catch (error) {
-        results.push({ beanId: id, deleted: false, error: (error as Error).message });
+        results.push({
+          beanId: id,
+          deleted: false,
+          error: (error as Error).message,
+        });
       }
     }
 
@@ -264,6 +275,57 @@ export function deleteHandler(backend: BackendInterface) {
       requestedCount: ids.length,
       deletedCount: results.filter(r => r.deleted).length,
       failedCount: results.filter(r => !r.deleted).length,
+    });
+  };
+}
+
+export function bulkCreateHandler(backend: BackendInterface) {
+  return async (input: {
+    beans: Array<{
+      title: string;
+      type: string;
+      status?: string;
+      priority?: string;
+      body?: string;
+      description?: string;
+      parent?: string;
+    }>;
+    parent?: string;
+  }) => {
+    const results = await backend.bulkCreate(input.beans, input.parent);
+    return makeTextAndStructured({
+      results,
+      requestedCount: input.beans.length,
+      successCount: results.filter(r => r.bean).length,
+      failedCount: results.filter(r => r.error).length,
+    });
+  };
+}
+
+export function bulkUpdateHandler(backend: BackendInterface) {
+  return async (input: {
+    beans: Array<{
+      beanId: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent?: string;
+      clearParent?: boolean;
+      blocking?: string[];
+      blockedBy?: string[];
+      body?: string;
+      bodyAppend?: string;
+      bodyReplace?: Array<{ old: string; new: string }>;
+      ifMatch?: string;
+    }>;
+    parent?: string;
+  }) => {
+    const results = await backend.bulkUpdate(input.beans, input.parent);
+    return makeTextAndStructured({
+      results,
+      requestedCount: input.beans.length,
+      successCount: results.filter(r => r.bean).length,
+      failedCount: results.filter(r => r.error).length,
     });
   };
 }
@@ -374,7 +436,8 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         type: z.string().min(1).max(MAX_METADATA_LENGTH),
         status: z.string().max(MAX_METADATA_LENGTH).optional(),
         priority: z.string().max(MAX_METADATA_LENGTH).optional(),
-        description: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+        body: z.string().max(MAX_DESCRIPTION_LENGTH).optional().describe('Body markdown content'),
+        description: z.string().max(MAX_DESCRIPTION_LENGTH).optional().describe('Deprecated alias for body'),
         parent: z.string().max(MAX_ID_LENGTH).optional(),
       }),
       annotations: {
@@ -500,6 +563,84 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     deleteHandler(backend),
   );
 
+  const beanCreateItemSchema = z.object({
+    title: z.string().min(1).max(MAX_TITLE_LENGTH),
+    type: z.string().min(1).max(MAX_METADATA_LENGTH),
+    status: z.string().max(MAX_METADATA_LENGTH).optional(),
+    priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+    body: z.string().max(MAX_DESCRIPTION_LENGTH).optional().describe('Body markdown content'),
+    description: z.string().max(MAX_DESCRIPTION_LENGTH).optional().describe('Deprecated alias for body'),
+    parent: z.string().max(MAX_ID_LENGTH).optional().describe('Override the top-level parent for this item'),
+  });
+
+  server.registerTool(
+    'beans_bulk_create',
+    {
+      title: 'Bulk Create Beans',
+      description: 'Create multiple beans in one call. Optionally assign all of them (or a subset) to a shared parent.',
+      inputSchema: z.object({
+        beans: z.array(beanCreateItemSchema).min(1),
+        parent: z
+          .string()
+          .max(MAX_ID_LENGTH)
+          .optional()
+          .describe('Default parent ID applied to any bean that does not specify its own parent'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    bulkCreateHandler(backend),
+  );
+
+  const beanUpdateItemSchema = z
+    .object({
+      beanId: z.string().min(1).max(MAX_ID_LENGTH),
+      status: z.string().max(MAX_METADATA_LENGTH).optional(),
+      type: z.string().max(MAX_METADATA_LENGTH).optional(),
+      priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+      parent: z.string().max(MAX_ID_LENGTH).optional().describe('Override the top-level parent for this item'),
+      clearParent: z.boolean().optional(),
+      blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+      blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+      body: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+      bodyAppend: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+      bodyReplace: z
+        .array(z.object({ old: z.string().max(MAX_DESCRIPTION_LENGTH), new: z.string().max(MAX_DESCRIPTION_LENGTH) }))
+        .optional(),
+      ifMatch: z.string().max(MAX_METADATA_LENGTH).optional(),
+    })
+    .refine(
+      input => !(input.body !== undefined && (input.bodyAppend !== undefined || input.bodyReplace !== undefined)),
+      { message: 'body cannot be combined with bodyAppend/bodyReplace' },
+    );
+
+  server.registerTool(
+    'beans_bulk_update',
+    {
+      title: 'Bulk Update Beans',
+      description: 'Update multiple beans in one call. Optionally assign all of them (or a subset) to a shared parent.',
+      inputSchema: z.object({
+        beans: z.array(beanUpdateItemSchema).min(1),
+        parent: z
+          .string()
+          .max(MAX_ID_LENGTH)
+          .optional()
+          .describe('Default parent ID applied to any bean that does not specify its own parent'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    bulkUpdateHandler(backend),
+  );
+
   server.registerTool(
     'beans_query',
     {
@@ -594,6 +735,12 @@ export class MutableBackend implements BackendInterface {
   }
   delete(id: string) {
     return this.inner.delete(id);
+  }
+  bulkCreate(beans: Parameters<BackendInterface['bulkCreate']>[0], defaultParent?: string) {
+    return this.inner.bulkCreate(beans, defaultParent);
+  }
+  bulkUpdate(beans: Parameters<BackendInterface['bulkUpdate']>[0], defaultParent?: string) {
+    return this.inner.bulkUpdate(beans, defaultParent);
   }
   openConfig() {
     return this.inner.openConfig();

@@ -143,6 +143,35 @@ describe('createBeansMcpServer', () => {
       type: 'task',
     })),
     delete: vi.fn(async () => ({ deleted: true })),
+    bulkCreate: vi.fn(async (beans, defaultParent) =>
+      beans.map((b: { title: string; type: string; parent?: string }) => ({
+        bean: {
+          id: 'bean1',
+          slug: 'bean1',
+          path: 'bean1.md',
+          title: b.title,
+          body: '',
+          status: 'draft',
+          type: b.type,
+          parent: b.parent ?? defaultParent,
+        },
+      })),
+    ),
+    bulkUpdate: vi.fn(async (beans, defaultParent) =>
+      beans.map((b: { beanId: string; parent?: string; clearParent?: boolean }) => ({
+        beanId: b.beanId,
+        bean: {
+          id: b.beanId,
+          slug: b.beanId,
+          path: `${b.beanId}.md`,
+          title: 'Updated',
+          body: '',
+          status: 'todo',
+          type: 'task',
+          parent: b.clearParent ? undefined : (b.parent ?? defaultParent),
+        },
+      })),
+    ),
     openConfig: vi.fn(async () => ({ configPath: '/config', content: '{}' })),
     graphqlSchema: vi.fn(async () => 'schema'),
     readOutputLog: vi.fn(async () => ({
@@ -392,6 +421,104 @@ describe('createBeansMcpServer', () => {
     expect(result.created).toBe(true);
   });
 
+  it('should create beans with body field', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    await backend.create({
+      title: 'Body Bean',
+      type: 'task',
+      body: '## Description\nSome markdown content',
+    });
+
+    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.lastCall?.[0];
+    expect(lastCall.body).toBe('## Description\nSome markdown content');
+  });
+
+  it('should treat description as a deprecated alias for body', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    await backend.create({
+      title: 'Desc Bean',
+      type: 'task',
+      description: 'legacy body text',
+    });
+
+    const lastCall = (mockBackend.create as ReturnType<typeof vi.fn>).mock.lastCall?.[0];
+    // description is a deprecated alias — it must be forwarded to the backend
+    expect(lastCall.description ?? lastCall.body).toBe('legacy body text');
+  });
+
+  it('should bulk create beans and return successCount/failedCount', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    const results = await backend.bulkCreate(
+      [
+        { title: 'Bean A', type: 'task' },
+        { title: 'Bean B', type: 'feature' },
+      ],
+      'parent-1',
+    );
+
+    expect(results).toHaveLength(2);
+    const successCount = results.filter(r => r.bean).length;
+    const failedCount = results.filter(r => r.error).length;
+    expect(successCount).toBe(2);
+    expect(failedCount).toBe(0);
+  });
+
+  it('should apply default parent to bulk-created beans that omit their own', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    (mockBackend.bulkCreate as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (beans: Array<{ title: string; type: string; parent?: string }>, defaultParent?: string) =>
+        beans.map(b => ({
+          bean: {
+            id: 'x',
+            slug: 'x',
+            path: 'x.md',
+            title: b.title,
+            body: '',
+            status: 'draft',
+            type: b.type,
+            parent: b.parent ?? defaultParent,
+          },
+        })),
+    );
+
+    const results = await backend.bulkCreate([{ title: 'Child', type: 'task' }], 'default-parent');
+    expect(results[0].bean?.parent).toBe('default-parent');
+  });
+
+  it('should bulk update beans and return successCount/failedCount', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    const results = await backend.bulkUpdate([
+      { beanId: 'bean1', status: 'completed' },
+      { beanId: 'bean2', status: 'in-progress' },
+    ]);
+
+    expect(results).toHaveLength(2);
+    const successCount = results.filter(r => r.bean).length;
+    const failedCount = results.filter(r => r.error).length;
+    expect(successCount).toBe(2);
+    expect(failedCount).toBe(0);
+  });
+
   it('should delete bean file', async () => {
     const { backend } = await createBeansMcpServer({
       workspaceRoot: '/test',
@@ -431,6 +558,17 @@ describe('MutableBackend', () => {
         type: 'task',
       })),
       delete: vi.fn(async () => ({ deleted: true })),
+      bulkCreate: vi.fn(async (beans: Array<{ title: string; type: string }>) =>
+        beans.map(b => ({
+          bean: { id: 'b1', slug: 'b1', path: 'b1.md', title: b.title, body: '', status: 'draft', type: b.type },
+        })),
+      ),
+      bulkUpdate: vi.fn(async (beans: Array<{ beanId: string }>) =>
+        beans.map(b => ({
+          beanId: b.beanId,
+          bean: { id: b.beanId, slug: b.beanId, path: `${b.beanId}.md`, title: 'T', body: '', status: 'todo', type: 'task' },
+        })),
+      ),
       openConfig: vi.fn(async () => ({ configPath: '/cfg', content: '{}' })),
       graphqlSchema: vi.fn(async () => 'schema'),
       readOutputLog: vi.fn(async () => ({ path: '/log', content: 'log', linesReturned: 0 })),
@@ -460,6 +598,12 @@ describe('MutableBackend', () => {
 
     await m.delete('b1');
     expect(inner.delete).toHaveBeenCalledWith('b1');
+
+    await m.bulkCreate([{ title: 'T', type: 'task' }], 'p1');
+    expect(inner.bulkCreate).toHaveBeenCalledWith([{ title: 'T', type: 'task' }], 'p1');
+
+    await m.bulkUpdate([{ beanId: 'b1', status: 'done' }], 'p1');
+    expect(inner.bulkUpdate).toHaveBeenCalledWith([{ beanId: 'b1', status: 'done' }], 'p1');
 
     await m.openConfig();
     expect(inner.openConfig).toHaveBeenCalled();
