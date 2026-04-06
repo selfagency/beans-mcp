@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { createDistPackage } from './lib/dist-package.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -9,34 +10,7 @@ async function main() {
   const rootPkgPath = resolve(__dirname, '..', 'package.json');
   const outDir = resolve(__dirname, '..', 'dist');
   const raw = await readFile(rootPkgPath, 'utf8');
-  const {name, version, description, keywords, homepage, bugs, issues, repository, license, author, mcpName} = JSON.parse(raw);
-
-  const distPkg = {
-    name,
-    version,
-    description,
-    keywords,
-    homepage,
-    bugs,
-    issues,
-    repository,
-    license,
-    author,
-    main: './index.cjs',
-    module: './index.js',
-    types: './index.d.ts',
-    files: ['./index.cjs', './index.js', './index.d.ts'],
-    bin: {
-      'beans-mcp': './beans-mcp-server.cjs'
-    },
-    exports: {
-      '.': {
-        import: './index.js',
-        require: './index.cjs'
-      }
-    },
-    mcpName
-  };
+  const distPkg = createDistPackage(JSON.parse(raw));
 
   await mkdir(outDir, { recursive: true });
   await writeFile(resolve(outDir, 'package.json'), JSON.stringify(distPkg, null, 2) + '\n', 'utf8');

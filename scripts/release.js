@@ -2,11 +2,12 @@
 
 import { Octokit } from '@octokit/rest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
+import { buildTokenUserConfig, normalizeRegistry, resolveNpmPublishAuth } from './lib/npm-auth.js';
 
 $.verbose = false;
 
@@ -133,19 +134,59 @@ async function main() {
   // Ensure npm uses the user's ~/.npmrc (tokens) and the public npm registry.
   // Some CI shells or tool integrations start without HOME/USERCONFIG, which causes
   // `npm whoami` to prompt for interactive login even when a token exists.
-  process.env.NPM_CONFIG_USERCONFIG ||= resolve(homedir(), '.npmrc');
-  const NPM_REGISTRY = process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/';
+  const defaultUserConfigPath = process.env.NPM_CONFIG_USERCONFIG || resolve(homedir(), '.npmrc');
+  const NPM_REGISTRY = normalizeRegistry(process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/');
+  const existingUserConfig = existsSync(defaultUserConfigPath)
+    ? readFileSync(defaultUserConfigPath, 'utf8')
+    : '';
+  const publishAuth = resolveNpmPublishAuth({
+    env: process.env,
+    registry: NPM_REGISTRY,
+    userConfigContent: existingUserConfig,
+  });
+
+  if (!publishAuth.token) {
+    console.error(`❌ No npm auth token found for ${NPM_REGISTRY}`);
+    console.error('   Tips:');
+    console.error('   - Export NPM_TOKEN or NODE_AUTH_TOKEN before running the release script');
+    console.error(`   - Or ensure ${defaultUserConfigPath} contains //registry.npmjs.org/:_authToken=<YOUR_TOKEN>`);
+    console.error('   - If your npm account requires 2FA for writes, the token must have write access and Bypass 2FA enabled');
+    process.exit(1);
+  }
+
+  const npmUserConfigDir = mkdtempSync(resolve(tmpdir(), 'beans-mcp-npm-'));
+  const npmUserConfigPath = resolve(npmUserConfigDir, '.npmrc');
+  writeFileSync(npmUserConfigPath, buildTokenUserConfig({ registry: NPM_REGISTRY, token: publishAuth.token }), 'utf8');
+
+  process.env.NPM_CONFIG_USERCONFIG = npmUserConfigPath;
+  process.env.npm_config_userconfig = npmUserConfigPath;
+  process.env.NPM_CONFIG_REGISTRY = NPM_REGISTRY;
+  process.env.npm_config_registry = NPM_REGISTRY;
+  process.env.CI ||= 'true';
+
+  $.env = {
+    ...process.env,
+    NPM_CONFIG_USERCONFIG: npmUserConfigPath,
+    npm_config_userconfig: npmUserConfigPath,
+    NPM_CONFIG_REGISTRY: NPM_REGISTRY,
+    npm_config_registry: NPM_REGISTRY,
+    CI: process.env.CI,
+  };
+
+  console.log(`🔐 Using npm auth from ${publishAuth.source}.`);
 
   // Check npm credentials against the intended registry (non-interactive).
   try {
-    await $`npm whoami --registry=${NPM_REGISTRY}`;
+    await $`npm whoami --userconfig=${npmUserConfigPath} --registry=${NPM_REGISTRY}`;
   } catch {
     console.error(`❌ Not logged in to npm (registry: ${NPM_REGISTRY}).`);
     console.error('   Tips:');
-    console.error(`   - Ensure your token is in ${process.env.NPM_CONFIG_USERCONFIG}`);
+    console.error(`   - Ensure your token is in ${npmUserConfigPath}`);
     console.error("   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>");
     console.error('   - Or export NPM_TOKEN in your environment before running the release script');
+    console.error('   - If npm still asks for OTP, use a granular token with write access and Bypass 2FA enabled');
     console.error('   - To log in interactively: npm login --registry=https://registry.npmjs.org/');
+    rmSync(npmUserConfigDir, { recursive: true, force: true });
     process.exit(1);
   }
 
@@ -371,9 +412,22 @@ async function main() {
   const accessFlag = (JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).name || '').startsWith('@')
     ? ['--access', 'public']
     : [];
-  await $`npm publish ./dist --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag}`;
-  $.verbose = false;
-  console.log(`✅ Published ${tag} to npm.`);
+  try {
+    await $`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag}`;
+    $.verbose = false;
+    console.log(`✅ Published ${tag} to npm.`);
+  } catch (err) {
+    $.verbose = false;
+    const output = `${err?.stdout ?? ''}\n${err?.stderr ?? ''}`;
+    if (output.includes('EOTP')) {
+      console.error('❌ npm publish requested an OTP even though token auth was configured.');
+      console.error('   npm now requires a granular write token with Bypass 2FA enabled for OTP-less publishes.');
+      console.error('   Update the token on your npm account, then retry the release.');
+    }
+    throw err;
+  } finally {
+    rmSync(npmUserConfigDir, { recursive: true, force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------
