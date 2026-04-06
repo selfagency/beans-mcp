@@ -30,19 +30,19 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 
 ## Summary of public MCP tools
 
-| Tool | Description |
-| --- | --- |
-| `beans_init` | Initialize the workspace (optional `prefix`). |
-| `beans_view` | Fetch full bean details by `beanId` or `beanIds`. |
-| `beans_create` | Create a new bean (title/type + optional body/parent). |
-| `beans_bulk_create` | Create multiple beans in one call, optionally under a shared parent. |
-| `beans_update` | Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`). |
-| `beans_bulk_update` | Update multiple beans in one call, optionally reassigning them to a shared parent. |
-| `beans_delete` | Delete one or many beans (`beanId` or `beanIds`, optional `force`). |
-| `beans_reopen` | Reopen a completed or scrapped bean to an active status. |
-| `beans_query` | Unified list/search/filter/sort/ready/llm_context/open_config operations. |
-| `beans_bean_file` | Read/edit/create/delete files under `.beans`. |
-| `beans_output` | Read extension output logs or show guidance. |
+| Tool                | Description                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `beans_init`        | Initialize the workspace (optional `prefix`).                                                                                                                                        |
+| `beans_view`        | Fetch full bean details by `beanId` or `beanIds`.                                                                                                                                    |
+| `beans_create`      | Create a new bean (title/type + optional body/parent).                                                                                                                               |
+| `beans_bulk_create` | Create multiple beans in one call, optionally under a shared parent.                                                                                                                 |
+| `beans_update`      | Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`). |
+| `beans_bulk_update` | Update multiple beans in one call, optionally reassigning them to a shared parent.                                                                                                   |
+| `beans_delete`      | Delete one or many beans (`beanId` or `beanIds`, optional `force`).                                                                                                                  |
+| `beans_reopen`      | Reopen a completed or scrapped bean to an active status.                                                                                                                             |
+| `beans_query`       | Unified list/search/filter/sort/ready/llm_context/open_config operations.                                                                                                            |
+| `beans_bean_file`   | Read/edit/create/delete files under `.beans`.                                                                                                                                        |
+| `beans_output`      | Read extension output logs or show guidance.                                                                                                                                         |
 
 ### Notes
 
