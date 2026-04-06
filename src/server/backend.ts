@@ -597,12 +597,18 @@ export class BeansCliBackend implements BackendInterface {
         return line;
       }
       // Already single-quoted: normalise to double quotes.
+      // In YAML single-quoted strings '' is the only escape (literal single quote).
+      // Backslash is NOT special, so it must be escaped when moving to double-quoted style.
       if (raw.length >= 2 && raw[0] === "'" && raw[raw.length - 1] === "'") {
-        const inner = raw.slice(1, -1).replaceAll("'", "\\'");
+        const inner = raw
+          .slice(1, -1)
+          .replaceAll("''", "'") // unescape YAML single-quote escape sequences
+          .replaceAll('\\', '\\\\') // escape backslashes for double-quoted YAML
+          .replaceAll('"', '\\"'); // escape double-quotes for double-quoted YAML
         return `title: "${inner}"`;
       }
-      // Unquoted: escape any literal double-quotes, then wrap.
-      const escaped = raw.replaceAll('"', '\\"');
+      // Unquoted: escape backslashes first, then double-quotes, then wrap.
+      const escaped = raw.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
       return `title: "${escaped}"`;
     });
 
