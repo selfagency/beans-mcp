@@ -181,6 +181,12 @@ describe('createBeansMcpServer', () => {
     })),
     readBeanFile: vi.fn(async () => ({ path: '/file', content: 'content' })),
     editBeanFile: vi.fn(async () => ({ path: '/file', bytes: 10 })),
+    updateBeanFrontmatter: vi.fn(async (_path, updates) => ({
+      path: '/file',
+      bytes: 10,
+      updatedFields: Object.keys(updates),
+      frontmatter: updates,
+    })),
     createBeanFile: vi.fn(async () => ({
       path: '/file',
       bytes: 10,
@@ -421,6 +427,16 @@ describe('createBeansMcpServer', () => {
     expect(result.created).toBe(true);
   });
 
+  it('should atomically update bean frontmatter', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    const result = await backend.updateBeanFrontmatter('test.md', { pr: '123', branch: 'feature/x' });
+    expect(result.updatedFields.sort()).toEqual(['branch', 'pr'].sort());
+  });
+
   it('should create beans with body field', async () => {
     const { backend } = await createBeansMcpServer({
       workspaceRoot: '/test',
@@ -582,6 +598,12 @@ describe('MutableBackend', () => {
       readOutputLog: vi.fn(async () => ({ path: '/log', content: 'log', linesReturned: 0 })),
       readBeanFile: vi.fn(async () => ({ path: '/f', content: 'c' })),
       editBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1 })),
+      updateBeanFrontmatter: vi.fn(async (_path, updates) => ({
+        path: '/f',
+        bytes: 1,
+        updatedFields: Object.keys(updates),
+        frontmatter: updates,
+      })),
       createBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1, created: true })),
       deleteBeanFile: vi.fn(async () => ({ path: '/f', deleted: true })),
       ...overrides,
@@ -627,6 +649,9 @@ describe('MutableBackend', () => {
 
     await m.editBeanFile('a.md', 'content');
     expect(inner.editBeanFile).toHaveBeenCalledWith('a.md', 'content');
+
+    await m.updateBeanFrontmatter('a.md', { pr: '123' });
+    expect(inner.updateBeanFrontmatter).toHaveBeenCalledWith('a.md', { pr: '123' });
 
     await m.createBeanFile('a.md', 'content', { overwrite: true });
     expect(inner.createBeanFile).toHaveBeenCalledWith('a.md', 'content', { overwrite: true });

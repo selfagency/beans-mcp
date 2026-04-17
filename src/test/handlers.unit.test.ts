@@ -52,6 +52,12 @@ function makeBackend(overrides: Partial<any> = {}) {
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
     })),
+    updateBeanFrontmatter: vi.fn(async (path: string, updates: Record<string, unknown>) => ({
+      path,
+      bytes: 12,
+      updatedFields: Object.keys(updates),
+      frontmatter: updates,
+    })),
     createBeanFile: vi.fn(async (path: string, content: string, _opts: any) => ({
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
@@ -299,6 +305,12 @@ describe('Handlers (unit)', () => {
       overwrite: true,
     });
     expect(backend.createBeanFile).toHaveBeenCalled();
+    const _frontmatter = await beanFileHandler(backend)({
+      operation: 'update_frontmatter',
+      path: 'p',
+      fields: { pr: '123', branch: 'feature/x' },
+    });
+    expect(backend.updateBeanFrontmatter).toHaveBeenCalledWith('p', { pr: '123', branch: 'feature/x' });
     const _del = await beanFileHandler(backend)({
       operation: 'delete',
       path: 'p',

@@ -50,6 +50,12 @@ vi.mock('../server/backend', () => {
       readOutputLog: vi.fn(async () => ({ path: '/log', content: '', linesReturned: 0 })),
       readBeanFile: vi.fn(async () => ({ path: '/f', content: '' })),
       editBeanFile: vi.fn(async () => ({ path: '/f', bytes: 0 })),
+      updateBeanFrontmatter: vi.fn(async (_path, updates) => ({
+        path: '/f',
+        bytes: 0,
+        updatedFields: Object.keys(updates),
+        frontmatter: updates,
+      })),
       createBeanFile: vi.fn(async () => ({ path: '/f', bytes: 0, created: true })),
       deleteBeanFile: vi.fn(async () => ({ path: '/f', deleted: true })),
     };

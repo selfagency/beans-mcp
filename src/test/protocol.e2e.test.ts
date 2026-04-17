@@ -59,6 +59,12 @@ function makeBackend(overrides: Partial<BackendInterface> = {}): BackendInterfac
     readOutputLog: vi.fn(async () => ({ path: '/log.txt', content: 'line1\nline2', linesReturned: 2 })),
     readBeanFile: vi.fn(async path => ({ path, content: '---\ntitle: Test\n---\n' })),
     editBeanFile: vi.fn(async (path, content) => ({ path, bytes: Buffer.byteLength(content, 'utf8') })),
+    updateBeanFrontmatter: vi.fn(async (path, updates) => ({
+      path,
+      bytes: 42,
+      updatedFields: Object.keys(updates),
+      frontmatter: updates,
+    })),
     createBeanFile: vi.fn(async (path, content) => ({
       path,
       bytes: Buffer.byteLength(content, 'utf8'),
@@ -892,10 +898,48 @@ describe('beans_bean_file', () => {
     }
   });
 
+  it('update_frontmatter atomically updates selected frontmatter fields', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_bean_file',
+        arguments: {
+          operation: 'update_frontmatter',
+          path: 'bean-1.md',
+          fields: { pr: '123', branch: 'feature/cascade-status-and-skills-npm' },
+        },
+      });
+      const data = parseResult(result) as { updatedFields: string[]; frontmatter: Record<string, unknown> };
+      expect(data.updatedFields.sort()).toEqual(['branch', 'pr'].sort());
+      expect(data.frontmatter.pr).toBe('123');
+      expect(backend.updateBeanFrontmatter).toHaveBeenCalledWith('bean-1.md', {
+        pr: '123',
+        branch: 'feature/cascade-status-and-skills-npm',
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('rejects empty path', async () => {
     const { client, cleanup } = await bootClient(makeBackend());
     try {
       await expectError(client.callTool({ name: 'beans_bean_file', arguments: { operation: 'read', path: '' } }));
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('rejects update_frontmatter without fields', async () => {
+    const { client, cleanup } = await bootClient(makeBackend());
+    try {
+      await expectError(
+        client.callTool({
+          name: 'beans_bean_file',
+          arguments: { operation: 'update_frontmatter', path: 'bean-1.md' },
+        }),
+      );
     } finally {
       await cleanup();
     }

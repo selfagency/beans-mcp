@@ -56,6 +56,7 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 - Reopening a parent bean via `beans_reopen` cascades the target status to closed descendants (`completed` / `scrapped`).
 - `beans_bulk_create` and `beans_bulk_update` are best-effort: they process each item sequentially and return a per-item result array with success/error entries rather than failing atomically.
 - Frontmatter `title:` values are automatically double-quoted on write. Pass raw titles — quoting and escaping is handled for you.
+- `beans_bean_file` supports `update_frontmatter` for atomic frontmatter-only writes; supported fields include `pr` and `branch`.
 - Unfiltered list results are cached with a short burst TTL and a timestamp-probe refresh strategy. Mutation tools (`beans_create`, `beans_update`, `beans_delete`, etc.) invalidate the cache immediately.
 - Version mismatches between `beans-mcp` and the Beans CLI are warning-only and non-blocking by design.
 - When `beanId` is missing in tool input, validation errors include a hint: `Did you mean \`beanId\`?`.
@@ -421,6 +422,35 @@ Response:
 {
   "path": "/workspace/.beans/beans-vscode-123--title.md",
   "content": "---\n...frontmatter...\n---\n# Title\n"
+}
+```
+
+Request (atomic frontmatter update):
+
+```json
+{
+  "operation": "update_frontmatter",
+  "path": "beans-vscode-123--title.md",
+  "fields": {
+    "status": "in-progress",
+    "pr": "123",
+    "branch": "feature/cascade-status-and-skills-npm"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "path": "/workspace/.beans/beans-vscode-123--title.md",
+  "bytes": 256,
+  "updatedFields": ["status", "pr", "branch"],
+  "frontmatter": {
+    "status": "in-progress",
+    "pr": "123",
+    "branch": "feature/cascade-status-and-skills-npm"
+  }
 }
 ```
 

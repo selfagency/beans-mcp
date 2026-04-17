@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
@@ -85,6 +85,26 @@ export interface BackendInterface {
   readOutputLog(options?: { lines?: number }): Promise<{ path: string; content: string; linesReturned: number }>;
   readBeanFile(relativePath: string): Promise<{ path: string; content: string }>;
   editBeanFile(relativePath: string, content: string): Promise<{ path: string; bytes: number }>;
+  updateBeanFrontmatter(
+    relativePath: string,
+    updates: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    },
+  ): Promise<{
+    path: string;
+    bytes: number;
+    updatedFields: string[];
+    frontmatter: Record<string, string | string[]>;
+  }>;
   createBeanFile(
     relativePath: string,
     content: string,
@@ -658,6 +678,99 @@ export class BeansCliBackend implements BackendInterface {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
+  private shouldQuoteFrontmatterValue(value: string): boolean {
+    return !/^[A-Za-z0-9._-]+$/.test(value);
+  }
+
+  private serializeFrontmatterValue(key: string, value: string | string[]): string {
+    if (Array.isArray(value)) {
+      return JSON.stringify(value);
+    }
+
+    if (key === 'title') {
+      return this.normalizeFrontmatterTitleValue(value);
+    }
+
+    if (this.shouldQuoteFrontmatterValue(value)) {
+      return `"${this.escapeForYamlDoubleQuoted(value)}"`;
+    }
+
+    return value;
+  }
+
+  private deserializeFrontmatterValue(value: string): string | string[] {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+          return parsed;
+        }
+      } catch {
+        // Fall through and return raw text.
+      }
+    }
+
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/''/g, "'");
+    }
+
+    return trimmed;
+  }
+
+  private splitFrontmatterDocument(content: string): {
+    eol: string;
+    hasFrontmatter: boolean;
+    frontmatterLines: string[];
+    body: string;
+  } {
+    const crlfOpen = content.startsWith('---\r\n');
+    const lfOpen = content.startsWith('---\n');
+    const eol = crlfOpen ? '\r\n' : '\n';
+
+    if (!crlfOpen && !lfOpen) {
+      return { eol: '\n', hasFrontmatter: false, frontmatterLines: [], body: content };
+    }
+
+    const openEnd = `---${eol}`.length;
+    const closeMarker = `${eol}---`;
+    const closeIdx = content.indexOf(closeMarker, openEnd);
+
+    if (closeIdx === -1) {
+      return { eol, hasFrontmatter: false, frontmatterLines: [], body: content };
+    }
+
+    const frontmatter = content.slice(openEnd, closeIdx);
+    const body = content.slice(closeIdx + closeMarker.length);
+    return {
+      eol,
+      hasFrontmatter: true,
+      frontmatterLines: frontmatter.length > 0 ? frontmatter.split(eol) : [],
+      body,
+    };
+  }
+
+  private parseFrontmatterFields(frontmatterLines: string[]): Record<string, string | string[]> {
+    const fields: Record<string, string | string[]> = {};
+
+    for (const line of frontmatterLines) {
+      const match = line.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
+      if (!match) {
+        continue;
+      }
+
+      fields[match[1]!] = this.deserializeFrontmatterValue(match[2] || '');
+    }
+
+    return fields;
+  }
+
+  private async writeFileAtomically(absolutePath: string, content: string): Promise<void> {
+    const tempPath = `${absolutePath}.tmp-${process.pid}-${Date.now()}`;
+    await writeFile(tempPath, content, 'utf8');
+    await rename(tempPath, absolutePath);
+  }
+
   /**
    * Normalise a raw YAML title value to a double-quoted scalar.
    * Handles: empty, already double-quoted, single-quoted (unescaping `''`),
@@ -748,6 +861,92 @@ export class BeansCliBackend implements BackendInterface {
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, fixed, 'utf8');
     return { path: absolutePath, bytes: Buffer.byteLength(fixed, 'utf8') };
+  }
+
+  async updateBeanFrontmatter(
+    relativePath: string,
+    updates: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    },
+  ): Promise<{
+    path: string;
+    bytes: number;
+    updatedFields: string[];
+    frontmatter: Record<string, string | string[]>;
+  }> {
+    const absolutePath = this.resolveBeanFilePath(relativePath);
+    const content = await readFile(absolutePath, 'utf8');
+    const { eol, hasFrontmatter, frontmatterLines, body } = this.splitFrontmatterDocument(content);
+    const updatedFields = Object.entries(updates)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key);
+
+    if (updatedFields.length === 0) {
+      throw new Error('At least one frontmatter field update is required');
+    }
+
+    const nextLines = [...frontmatterLines];
+    const indexByKey = new Map<string, number>();
+
+    nextLines.forEach((line, index) => {
+      const match = line.match(/^([a-zA-Z0-9_]+):\s*/);
+      if (match) {
+        indexByKey.set(match[1]!, index);
+      }
+    });
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined) {
+        continue;
+      }
+
+      const existingIndex = indexByKey.get(key);
+      if (value === null) {
+        if (existingIndex !== undefined) {
+          nextLines.splice(existingIndex, 1);
+          indexByKey.clear();
+          nextLines.forEach((line, index) => {
+            const match = line.match(/^([a-zA-Z0-9_]+):\s*/);
+            if (match) {
+              indexByKey.set(match[1]!, index);
+            }
+          });
+        }
+        continue;
+      }
+
+      const serialized = `${key}: ${this.serializeFrontmatterValue(key, value)}`;
+      if (existingIndex !== undefined) {
+        nextLines[existingIndex] = serialized;
+      } else {
+        nextLines.push(serialized);
+        indexByKey.set(key, nextLines.length - 1);
+      }
+    }
+
+    const frontmatterBlock = nextLines.length > 0 ? nextLines.join(eol) : '';
+    const nextContent = hasFrontmatter
+      ? `---${eol}${frontmatterBlock}${eol}---${body}`
+      : `---${eol}${frontmatterBlock}${eol}---${eol}${body}`;
+    const fixed = this.quoteFrontmatterTitles(nextContent);
+
+    await this.writeFileAtomically(absolutePath, fixed);
+
+    return {
+      path: absolutePath,
+      bytes: Buffer.byteLength(fixed, 'utf8'),
+      updatedFields,
+      frontmatter: this.parseFrontmatterFields(this.splitFrontmatterDocument(fixed).frontmatterLines),
+    };
   }
 
   async createBeanFile(

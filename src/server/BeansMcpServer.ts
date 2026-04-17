@@ -519,11 +519,24 @@ export function beanFileHandler(backend: BackendInterface) {
     path,
     content,
     overwrite,
+    fields,
   }: {
-    operation: 'read' | 'edit' | 'create' | 'delete';
+    operation: 'read' | 'edit' | 'create' | 'delete' | 'update_frontmatter';
     path: string;
     content?: string;
     overwrite?: boolean;
+    fields?: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    };
   }) => {
     if (operation === 'read') {
       return makeTextAndStructured(await backend.readBeanFile(path));
@@ -533,6 +546,9 @@ export function beanFileHandler(backend: BackendInterface) {
     }
     if (operation === 'create') {
       return makeTextAndStructured(await backend.createBeanFile(path, content || '', { overwrite }));
+    }
+    if (operation === 'update_frontmatter') {
+      return makeTextAndStructured(await backend.updateBeanFrontmatter(path, fields || {}));
     }
     if (operation === 'delete') {
       return makeTextAndStructured(await backend.deleteBeanFile(path));
@@ -922,12 +938,39 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'Bean File Operations',
       description: 'Read, create, edit, or delete files under .beans (operation param).',
-      inputSchema: z.object({
-        operation: z.enum(['read', 'edit', 'create', 'delete']),
-        path: z.string().min(1).max(MAX_PATH_LENGTH),
-        content: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
-        overwrite: z.boolean().optional(),
-      }),
+      inputSchema: z
+        .object({
+          operation: z.enum(['read', 'edit', 'create', 'delete', 'update_frontmatter']),
+          path: z.string().min(1).max(MAX_PATH_LENGTH),
+          content: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+          overwrite: z.boolean().optional(),
+          fields: z
+            .object({
+              title: z.string().max(MAX_TITLE_LENGTH).optional(),
+              status: z.string().max(MAX_METADATA_LENGTH).optional(),
+              type: z.string().max(MAX_METADATA_LENGTH).optional(),
+              priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+              parent_id: z.string().max(MAX_ID_LENGTH).nullable().optional(),
+              tags: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+              blocking_ids: z.array(z.string().max(MAX_ID_LENGTH)).nullable().optional(),
+              blocked_by_ids: z.array(z.string().max(MAX_ID_LENGTH)).nullable().optional(),
+              pr: z.string().max(MAX_TITLE_LENGTH).nullable().optional(),
+              branch: z.string().max(MAX_TITLE_LENGTH).nullable().optional(),
+            })
+            .optional(),
+        })
+        .superRefine((input, ctx) => {
+          if (input.operation === 'update_frontmatter') {
+            const fieldCount = Object.values(input.fields || {}).filter(value => value !== undefined).length;
+            if (fieldCount === 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['fields'],
+                message: 'At least one frontmatter field update is required',
+              });
+            }
+          }
+        }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -1020,6 +1063,9 @@ export class MutableBackend implements BackendInterface {
   }
   editBeanFile(path: string, content: string) {
     return this.inner.editBeanFile(path, content);
+  }
+  updateBeanFrontmatter(path: string, updates: Parameters<BackendInterface['updateBeanFrontmatter']>[1]) {
+    return this.inner.updateBeanFrontmatter(path, updates);
   }
   createBeanFile(path: string, content: string, opts?: Parameters<BackendInterface['createBeanFile']>[2]) {
     return this.inner.createBeanFile(path, content, opts);

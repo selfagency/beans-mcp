@@ -225,6 +225,7 @@ Writes to `.github/instructions/beans-prime.instructions.md` when `writeToWorksp
 
 - Pass the filename **without** the `.beans/` prefix — it is resolved automatically.
 - Both `foo.md` and `.beans/foo.md` are accepted; the leading `.beans/` is stripped.
+- Use `update_frontmatter` to atomically update frontmatter fields without rewriting the body.
 
 ```json
 { "operation": "read", "path": "task-abc--fix-login.md" }
@@ -251,13 +252,25 @@ Writes to `.github/instructions/beans-prime.instructions.md` when `writeToWorksp
 { "operation": "delete", "path": "old-note.md" }
 ```
 
+```json
+{
+  "operation": "update_frontmatter",
+  "path": "task-abc--fix-login.md",
+  "fields": {
+    "status": "in-progress",
+    "pr": "123",
+    "branch": "feature/cascade-status-and-skills-npm"
+  }
+}
+```
+
 ### Frontmatter conventions
 
 - `title` values are **always double-quoted** in frontmatter.
   - ✅ `title: "Fix login timeout"`
   - ❌ `title: Fix login timeout`
 - Dates use ISO 8601: `2026-01-01T00:00:00Z`
-- Standard fields: `title`, `status`, `type`, `priority`, `tags`, `parent_id`, `blocking_ids`, `blocked_by_ids`, `created_at`, `updated_at`
+- Standard fields: `title`, `status`, `type`, `priority`, `tags`, `parent_id`, `blocking_ids`, `blocked_by_ids`, `pr`, `branch`, `created_at`, `updated_at`
 
 ---
 
