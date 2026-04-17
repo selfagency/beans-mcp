@@ -26,9 +26,7 @@
       "id": 3,
       "prompt": "Open a GitHub issue in selfagency/beans-mcp titled 'Docs typo'.",
       "expected_output": "The skill should not trigger; this is a generic GitHub issue workflow and not Beans workspace work.",
-      "assertions": [
-        "The response indicates this request is outside Beans skill scope"
-      ]
+      "assertions": ["The response indicates this request is outside Beans skill scope"]
     }
   ]
 }

@@ -460,7 +460,9 @@ async function main() {
     : [];
   try {
     if (!otpItemId) {
-      throw new Error('Set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) before running the release script');
+      throw new Error(
+        'Set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) before running the release script',
+      );
     }
     const otp = (await $`op item get ${otpItemId} --otp`).stdout.trim();
     if (!otp) {

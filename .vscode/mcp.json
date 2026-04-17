@@ -2,11 +2,7 @@
   "servers": {
     "git": {
       "command": "pnpx",
-      "args": [
-        "@selfagency/git-mcp@latest",
-        "--repo-path",
-        "${workspaceFolder}"
-      ]
+      "args": ["@selfagency/git-mcp@latest", "--repo-path", "${workspaceFolder}"]
     }
   }
 }

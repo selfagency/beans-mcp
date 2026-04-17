@@ -27,13 +27,13 @@
   "bin": {
     "beans-mcp": "dist/beans-mcp-server.cjs"
   },
-  "type": "module",
   "files": [
     "dist",
     "skills",
     "README.md",
     "LICENSE.txt"
   ],
+  "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -63,19 +63,19 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.1",
-    "@types/node": "25.5.2",
-    "@vitest/coverage-v8": "^4.1.2",
-    "@vitest/ui": "4.1.2",
+    "@types/node": "25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/ui": "4.1.4",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "ora": "^9.3.0",
-    "oxfmt": "^0.43.0",
-    "oxlint": "^1.58.0",
-    "oxlint-tsgolint": "^0.20.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
+    "oxlint-tsgolint": "^0.21.1",
     "tsup": "8.5.1",
-    "typescript": "6.0.2",
+    "typescript": "6.0.3",
     "vitepress": "^1.6.4",
-    "vitest": "4.1.2",
+    "vitest": "4.1.4",
     "zod": "4.3.6",
     "zx": "^8.8.5"
   },
