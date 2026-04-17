@@ -75,10 +75,11 @@ describe('BeansCliBackend.updateBeanFrontmatter', () => {
       `---\ntitle: Old title # keep-me\nstatus: todo\n---\nBody\n`,
     );
 
-    await backend.updateBeanFrontmatter('bean.md', { title: 'New: title with colon' });
+    const result = await backend.updateBeanFrontmatter('bean.md', { title: 'New: title with colon' });
 
     const content = await readFile(beanPath, 'utf8');
     expect(content).toContain('title: "New: title with colon" # keep-me');
+    expect(result.frontmatter.title).toBe('New: title with colon');
   });
 
   it('handles CRLF frontmatter and single-quoted title values', async () => {

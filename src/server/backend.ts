@@ -821,7 +821,8 @@ export class BeansCliBackend implements BackendInterface {
         continue;
       }
 
-      fields[parsed.key] = this.deserializeFrontmatterValue(parsed.rawValue);
+      const { valuePart } = this.splitYamlInlineComment(parsed.rawValue);
+      fields[parsed.key] = this.deserializeFrontmatterValue(valuePart);
     }
 
     return fields;

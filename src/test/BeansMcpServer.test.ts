@@ -556,6 +556,7 @@ describe('MutableBackend', () => {
   function makeInner(overrides: Partial<BackendInterface> = {}): BackendInterface {
     return {
       init: vi.fn(async () => ({ initialized: true })),
+      archive: vi.fn(async () => ({ archived: true, archivedCount: 1 })),
       list: vi.fn(async () => []),
       create: vi.fn(async input => ({
         id: 'b1',
@@ -631,6 +632,9 @@ describe('MutableBackend', () => {
     await m.delete('b1');
     expect(inner.delete).toHaveBeenCalledWith('b1');
 
+    await m.archive();
+    expect(inner.archive).toHaveBeenCalled();
+
     await m.bulkCreate([{ title: 'T', type: 'task' }], 'p1');
     expect(inner.bulkCreate).toHaveBeenCalledWith([{ title: 'T', type: 'task' }], 'p1');
 
@@ -675,6 +679,13 @@ describe('MutableBackend', () => {
     await m.list();
     expect(inner1.list).toHaveBeenCalledTimes(1); // not called again
     expect(inner2.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('archive throws TypeError when unsupported by the inner backend', async () => {
+    const inner = makeInner({ archive: undefined });
+    const m = new MutableBackend(inner as BackendInterface);
+
+    expect(() => m.archive()).toThrow(TypeError);
   });
 });
 

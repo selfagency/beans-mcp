@@ -1064,7 +1064,10 @@ export class MutableBackend implements BackendInterface {
     return this.inner.init(prefix);
   }
   archive() {
-    return this.inner.archive?.() ?? Promise.resolve({ archived: false, reason: 'Archive not supported by backend' });
+    if (typeof this.inner.archive === 'function') {
+      return this.inner.archive();
+    }
+    throw new TypeError('Archive is not supported by backend');
   }
   queryGraphql(query: string, variables?: Record<string, unknown>) {
     if (typeof this.inner.queryGraphql === 'function') {
