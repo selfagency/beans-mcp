@@ -38,12 +38,7 @@ describe('npm auth helpers', () => {
 
   it('builds a minimal userconfig for token publish auth', () => {
     expect(buildTokenUserConfig({ registry: 'https://registry.npmjs.org', token: 'secret-token' })).toBe(
-      [
-        'registry=https://registry.npmjs.org/',
-        '//registry.npmjs.org/:_authToken=secret-token',
-        'always-auth=true',
-        '',
-      ].join('\n'),
+      ['registry=https://registry.npmjs.org/', '//registry.npmjs.org/:_authToken=secret-token', ''].join('\n'),
     );
   });
 

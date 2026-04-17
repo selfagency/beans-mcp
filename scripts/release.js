@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
-import { buildTokenUserConfig, normalizeRegistry, resolveNpmPublishAuthCandidates } from './lib/npm-auth.js';
+import { buildTokenUserConfig, extractAuthTokenFromNpmrc, normalizeRegistry } from './lib/npm-auth.js';
 import { buildRollbackPlan, getReleaseMetadataFiles, resolveOtpItemId } from './lib/release-state.js';
 
 $.verbose = false;
@@ -107,6 +107,17 @@ function buildSanitizedNpmEnv({ baseEnv, userConfigPath, registry, token }) {
   return env;
 }
 
+function resolveInterpolatedToken(rawToken, env) {
+  const token = (rawToken || '').trim();
+  const interpolated = token.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
+  if (!interpolated) {
+    return token;
+  }
+
+  const envName = interpolated[1];
+  return envName ? (env[envName] || '').trim() : '';
+}
+
 async function rollback() {
   const plan = buildRollbackPlan({
     commitLocal,
@@ -198,20 +209,47 @@ async function main() {
   // Ensure npm uses the user's ~/.npmrc (tokens) and the public npm registry.
   // Some CI shells or tool integrations start without HOME/USERCONFIG, which causes
   // `npm whoami` to prompt for interactive login even when a token exists.
-  const defaultUserConfigPath = process.env.NPM_CONFIG_USERCONFIG || resolve(homedir(), '.npmrc');
   const NPM_REGISTRY = normalizeRegistry(process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/');
-  const existingUserConfig = existsSync(defaultUserConfigPath) ? readFileSync(defaultUserConfigPath, 'utf8') : '';
-  const publishAuthCandidates = resolveNpmPublishAuthCandidates({
-    env: process.env,
-    registry: NPM_REGISTRY,
-    userConfigContent: existingUserConfig,
-  });
+  const defaultUserConfigPath = resolve(homedir(), '.npmrc');
+  const explicitUserConfigPath = process.env.NPM_CONFIG_USERCONFIG?.trim();
+
+  const userConfigPaths = Array.from(
+    new Set(
+      [explicitUserConfigPath, defaultUserConfigPath].filter(
+        candidate => typeof candidate === 'string' && candidate.trim().length > 0,
+      ),
+    ),
+  );
+
+  const publishAuthCandidates = [];
+  const seenTokens = new Set();
+
+  const addCandidate = (rawToken, source) => {
+    const token = resolveInterpolatedToken(rawToken, process.env);
+    if (!token || seenTokens.has(token)) {
+      return;
+    }
+    seenTokens.add(token);
+    publishAuthCandidates.push({ token, source, registry: NPM_REGISTRY });
+  };
+
+  addCandidate(process.env.NPM_TOKEN, 'NPM_TOKEN');
+  addCandidate(process.env.NODE_AUTH_TOKEN, 'NODE_AUTH_TOKEN');
+
+  for (const path of userConfigPaths) {
+    const content = existsSync(path) ? readFileSync(path, 'utf8') : '';
+    const npmrcToken = extractAuthTokenFromNpmrc(content, NPM_REGISTRY);
+    addCandidate(npmrcToken, `npmrc:${path}`);
+  }
 
   if (publishAuthCandidates.length === 0) {
     console.error(`❌ No npm auth token found for ${NPM_REGISTRY}`);
     console.error('   Tips:');
     console.error('   - Export NPM_TOKEN or NODE_AUTH_TOKEN before running the release script');
     console.error(`   - Or ensure ${defaultUserConfigPath} contains //registry.npmjs.org/:_authToken=<YOUR_TOKEN>`);
+    if (explicitUserConfigPath) {
+      console.error(`   - Current NPM_CONFIG_USERCONFIG is ${explicitUserConfigPath}`);
+    }
     console.error(
       '   - If your npm account requires 2FA for writes, the token must have write access and Bypass 2FA enabled',
     );
@@ -249,6 +287,10 @@ async function main() {
     console.error('   Tips:');
     console.error('   - If NPM_TOKEN is set, ensure it is valid (stale tokens override npm login by default)');
     console.error(`   - Ensure your token is in ${npmUserConfigPath}`);
+    console.error(`   - Ensure ~/.npmrc (${defaultUserConfigPath}) has a valid token if using npm login`);
+    if (explicitUserConfigPath) {
+      console.error(`   - NPM_CONFIG_USERCONFIG was ${explicitUserConfigPath}; the script also checked ~/.npmrc`);
+    }
     console.error('   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>');
     console.error('   - Or export NPM_TOKEN in your environment before running the release script');
     console.error('   - If npm still asks for OTP, use a granular token with write access and Bypass 2FA enabled');
