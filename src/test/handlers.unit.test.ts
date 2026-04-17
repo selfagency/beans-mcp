@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   archiveHandler,
   beanFileHandler,
+  bulkCreateHandler,
   completeTasksHandler,
   createHandler,
   deleteHandler,
@@ -118,6 +119,13 @@ describe('Handlers (unit)', () => {
     expect(backend.create).toHaveBeenCalled();
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
     expect(data.bean.id).toBe('new');
+  });
+
+  it('createHandler emits deprecation warning when description is used', async () => {
+    const backend = makeBackend();
+    const res = await createHandler(backend)({ title: 'T', type: 't', description: 'deprecated body' });
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.warnings).toEqual(['`description` is deprecated; use `body` instead.']);
   });
 
   it('editHandler delegates to backend.update', async () => {
@@ -358,5 +366,24 @@ describe('Handlers (unit)', () => {
     expect(backend.queryGraphql).toHaveBeenCalledWith('{ beans { id } }', { limit: 1 });
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
     expect(data.data.beans[0].id).toBe('b1');
+  });
+
+  it('bulkCreateHandler emits warning summary for deprecated description usage', async () => {
+    const backend = makeBackend({
+      bulkCreate: vi.fn(async () => [
+        { bean: { ...sampleBean, id: 'new-1' } },
+        { bean: { ...sampleBean, id: 'new-2' } },
+      ]),
+    });
+
+    const res = await bulkCreateHandler(backend)({
+      beans: [
+        { title: 'A', type: 'task', description: 'legacy' },
+        { title: 'B', type: 'task' },
+      ],
+    });
+
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.warnings).toEqual(['Found 1 bean(s) using deprecated field `description`; use `body` instead.']);
   });
 });

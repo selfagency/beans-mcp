@@ -67,4 +67,39 @@ describe('BeansCliBackend.updateBeanFrontmatter', () => {
     expect(content).not.toContain('branch:');
     expect(content).toContain('Body');
   });
+
+  it('preserves inline comments on title while normalizing quoting', async () => {
+    const { backend, beanPath } = await createWorkspaceWithBean(
+      `---\ntitle: Old title # keep-me\nstatus: todo\n---\nBody\n`,
+    );
+
+    await backend.updateBeanFrontmatter('bean.md', { title: 'New: title with colon' });
+
+    const content = await readFile(beanPath, 'utf8');
+    expect(content).toContain('title: "New: title with colon" # keep-me');
+  });
+
+  it('handles CRLF frontmatter and single-quoted title values', async () => {
+    const { backend, beanPath } = await createWorkspaceWithBean(
+      "---\r\ntitle: 'Old ''quoted'' title'\r\nstatus: todo\r\n---\r\nBody\r\n",
+    );
+
+    await backend.updateBeanFrontmatter('bean.md', { title: "User's title" });
+
+    const content = await readFile(beanPath, 'utf8');
+    expect(content).toContain('title: "User\'s title"');
+    expect(content).toContain('\r\n');
+  });
+});
+
+describe('BeansCliBackend.createBeanFile', () => {
+  it('returns a user-friendly message when file exists and overwrite is false', async () => {
+    const { backend } = await createWorkspaceWithBean(`---\ntitle: Existing\n---\nBody\n`);
+
+    await expect(
+      backend.createBeanFile('bean.md', `---\ntitle: New\n---\nBody\n`, {
+        overwrite: false,
+      }),
+    ).rejects.toThrow('Bean file already exists. Pass overwrite=true to replace it.');
+  });
 });

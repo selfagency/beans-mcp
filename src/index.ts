@@ -18,4 +18,4 @@ export { BeansCliBackend, type BackendInterface } from './server/backend';
 export { sortBeans } from './internal/queryHelpers';
 export { isPathWithinRoot, makeTextAndStructured } from './utils';
 export type { BeanRecord, SortMode, GraphQLError } from './types';
-export { DEFAULT_MCP_PORT, MAX_ID_LENGTH, MAX_TITLE_LENGTH, MAX_METADATA_LENGTH } from './types';
+export { DEFAULT_MCP_PORT, MAX_ID_LENGTH, MAX_TITLE_LENGTH, MAX_METADATA_LENGTH, MAX_PATH_LENGTH } from './types';

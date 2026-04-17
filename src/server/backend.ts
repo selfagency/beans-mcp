@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
@@ -491,19 +491,20 @@ export class BeansCliBackend implements BackendInterface {
     }>,
     defaultParent?: string,
   ): Promise<Array<{ bean?: BeanRecord; error?: string }>> {
-    const results: Array<{ bean?: BeanRecord; error?: string }> = [];
-    for (const item of beans) {
-      try {
-        const bean = await this.create({
+    const settled = await Promise.allSettled(
+      beans.map(async item =>
+        this.create({
           ...item,
           parent: item.parent ?? defaultParent,
-        });
-        results.push({ bean });
-      } catch (error) {
-        results.push({ error: (error as Error).message });
-      }
-    }
-    return results;
+        }),
+      ),
+    );
+
+    return settled.map(result =>
+      result.status === 'fulfilled'
+        ? { bean: result.value }
+        : { error: result.reason instanceof Error ? result.reason.message : String(result.reason) },
+    );
   }
 
   async bulkUpdate(
@@ -523,17 +524,29 @@ export class BeansCliBackend implements BackendInterface {
     }>,
     defaultParent?: string,
   ): Promise<Array<{ beanId: string; bean?: BeanRecord; error?: string }>> {
-    const results: Array<{ beanId: string; bean?: BeanRecord; error?: string }> = [];
-    for (const { beanId, ...updates } of beans) {
-      try {
+    const settled = await Promise.allSettled(
+      beans.map(async ({ beanId, ...updates }) => {
         const resolvedParent = updates.parent ?? (updates.clearParent ? undefined : defaultParent);
         const bean = await this.update(beanId, { ...updates, parent: resolvedParent });
-        results.push({ beanId, bean });
-      } catch (error) {
-        results.push({ beanId, error: (error as Error).message });
+        return { beanId, bean };
+      }),
+    );
+
+    return settled.map((result, index) => {
+      const beanId = beans[index]?.beanId;
+      if (!beanId) {
+        return { beanId: 'unknown', error: 'Unknown bean id' };
       }
-    }
-    return results;
+
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+
+      return {
+        beanId,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      };
+    });
   }
 
   async openConfig(): Promise<{ configPath: string; content: string }> {
@@ -576,12 +589,20 @@ export class BeansCliBackend implements BackendInterface {
       process.env.BEANS_VSCODE_OUTPUT_LOG || join(this.workspaceRoot, '.vscode', 'logs', 'beans-output.log'),
     );
 
-    const isWithinWorkspace = isPathWithinRoot(this.workspaceRoot, outputPath);
+    const canonicalOutputPath = await realpath(outputPath).catch(() => outputPath);
+    const canonicalWorkspaceRoot = await realpath(this.workspaceRoot).catch(() => resolve(this.workspaceRoot));
+
+    const isWithinWorkspace = isPathWithinRoot(canonicalWorkspaceRoot, canonicalOutputPath);
     const vscodeLogDir =
       process.env.BEANS_VSCODE_LOG_DIR || this.logDir
         ? resolve(process.env.BEANS_VSCODE_LOG_DIR || this.logDir || '')
         : undefined;
-    const isWithinVscodeLogDir = vscodeLogDir ? isPathWithinRoot(vscodeLogDir, outputPath) : false;
+    const canonicalVscodeLogDir = vscodeLogDir
+      ? await realpath(vscodeLogDir).catch(() => resolve(vscodeLogDir))
+      : undefined;
+    const isWithinVscodeLogDir = canonicalVscodeLogDir
+      ? isPathWithinRoot(canonicalVscodeLogDir, canonicalOutputPath)
+      : false;
 
     if (!isWithinWorkspace && !isWithinVscodeLogDir) {
       throw new Error('Output log path must stay within the workspace or VS Code log directory');
@@ -926,7 +947,10 @@ export class BeansCliBackend implements BackendInterface {
 
       const serialized = `${key}: ${this.serializeFrontmatterValue(key, value)}`;
       if (existingIndex !== undefined) {
-        nextLines[existingIndex] = serialized;
+        const existingLine = nextLines[existingIndex] ?? '';
+        const existingMatch = existingLine.match(/^[a-zA-Z0-9_]+:\s*(.*)$/);
+        const commentPart = existingMatch ? this.splitYamlInlineComment(existingMatch[1] || '').commentPart : '';
+        nextLines[existingIndex] = `${serialized}${commentPart}`;
       } else {
         nextLines.push(serialized);
         indexByKey.set(key, nextLines.length - 1);
@@ -958,10 +982,18 @@ export class BeansCliBackend implements BackendInterface {
     const fixed = this.quoteFrontmatterTitles(content);
     await mkdir(dirname(absolutePath), { recursive: true });
 
-    await writeFile(absolutePath, fixed, {
-      encoding: 'utf8',
-      flag: options?.overwrite ? 'w' : 'wx',
-    });
+    try {
+      await writeFile(absolutePath, fixed, {
+        encoding: 'utf8',
+        flag: options?.overwrite ? 'w' : 'wx',
+      });
+    } catch (error) {
+      const maybeNodeError = error as NodeJS.ErrnoException;
+      if (maybeNodeError.code === 'EEXIST' && !options?.overwrite) {
+        throw new Error('Bean file already exists. Pass overwrite=true to replace it.');
+      }
+      throw error;
+    }
 
     return {
       path: absolutePath,

@@ -77,10 +77,14 @@ export async function detectBeansCliVersion(cliPath: string, workspaceRoot: stri
 }
 
 // Exported test seam: get a bean by id with consistent error messages
-export async function getBeanById(backend: BackendInterface, beanId: string) {
+export async function getBeanById(
+  backend: BackendInterface,
+  beanId: string,
+  beans?: Awaited<ReturnType<BackendInterface['list']>>,
+) {
   try {
-    const beans = await backend.list();
-    const found = beans.find(b => b.id === beanId);
+    const allBeans = beans ?? (await backend.list());
+    const found = allBeans.find(b => b.id === beanId);
     if (!found) {
       throw new Error(`Bean not found: ${beanId}`);
     }
@@ -133,27 +137,47 @@ async function cascadeStatusToDescendants(
   backend: BackendInterface,
   rootBeanId: string,
   targetStatus: string,
-  options?: { onlyCurrentStatuses?: Set<string> },
+  options?: {
+    onlyCurrentStatuses?: Set<string>;
+    beans?: Array<{ id: string; parentId?: string; status: string }>;
+  },
 ) {
-  const beans = await backend.list();
+  const beans = options?.beans ?? (await backend.list());
   const descendants = collectDescendantBeans(beans, rootBeanId);
   const updatedBeanIds: string[] = [];
   const skippedBeanIds: string[] = [];
   const errors: Array<{ beanId: string; error: string }> = [];
 
+  const toUpdate: Array<{ id: string; parentId?: string; status: string }> = [];
   for (const bean of descendants) {
     if (options?.onlyCurrentStatuses && !options.onlyCurrentStatuses.has(bean.status)) {
       skippedBeanIds.push(bean.id);
       continue;
     }
 
-    try {
-      await backend.update(bean.id, { status: targetStatus });
-      updatedBeanIds.push(bean.id);
-    } catch (error) {
-      errors.push({ beanId: bean.id, error: (error as Error).message });
-    }
+    toUpdate.push(bean);
   }
+
+  const settled = await Promise.allSettled(
+    toUpdate.map(async bean => backend.update(bean.id, { status: targetStatus })),
+  );
+
+  settled.forEach((result, index) => {
+    const bean = toUpdate[index];
+    if (!bean) {
+      return;
+    }
+
+    if (result.status === 'fulfilled') {
+      updatedBeanIds.push(bean.id);
+      return;
+    }
+
+    errors.push({
+      beanId: bean.id,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+  });
 
   return {
     totalDescendants: descendants.length,
@@ -265,7 +289,15 @@ export function createHandler(backend: BackendInterface) {
     body?: string;
     description?: string;
     parent?: string;
-  }) => makeTextAndStructured({ bean: await backend.create(input) });
+  }) => {
+    const bean = await backend.create(input);
+    const warnings = input.description !== undefined ? ['`description` is deprecated; use `body` instead.'] : undefined;
+
+    return makeTextAndStructured({
+      bean,
+      ...(warnings ? { warnings } : {}),
+    });
+  };
 }
 
 export function editHandler(backend: BackendInterface) {
@@ -294,13 +326,15 @@ export function reopenHandler(backend: BackendInterface) {
     requiredCurrentStatus: 'completed' | 'scrapped';
     targetStatus: string;
   }) => {
-    const bean = await getBeanById(backend, beanId);
+    const beans = await backend.list();
+    const bean = await getBeanById(backend, beanId, beans);
     if (bean.status !== requiredCurrentStatus) {
       throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
     }
     const updatedParentBean = await backend.update(beanId, { status: targetStatus });
     const cascade = await cascadeStatusToDescendants(backend, beanId, targetStatus, {
       onlyCurrentStatuses: CLOSED_STATUSES,
+      beans,
     });
 
     return makeTextAndStructured({
@@ -346,7 +380,9 @@ export function updateHandler(backend: BackendInterface) {
 
     const shouldCascadeClose = Boolean(input.status && CLOSED_STATUSES.has(input.status));
     const cascade = shouldCascadeClose
-      ? await cascadeStatusToDescendants(backend, input.beanId, input.status as string)
+      ? await cascadeStatusToDescendants(backend, input.beanId, input.status as string, {
+          beans: await backend.list(),
+        })
       : null;
 
     return makeTextAndStructured({
@@ -450,11 +486,19 @@ export function bulkCreateHandler(backend: BackendInterface) {
     parent?: string;
   }) => {
     const results = await backend.bulkCreate(input.beans, input.parent);
+    const deprecatedDescriptionCount = input.beans.filter(bean => bean.description !== undefined).length;
     return makeTextAndStructured({
       results,
       requestedCount: input.beans.length,
       successCount: results.filter(r => r.bean).length,
       failedCount: results.filter(r => r.error).length,
+      ...(deprecatedDescriptionCount > 0
+        ? {
+            warnings: [
+              `Found ${deprecatedDescriptionCount} bean(s) using deprecated field \`description\`; use \`body\` instead.`,
+            ],
+          }
+        : {}),
     });
   };
 }
@@ -1023,7 +1067,7 @@ export class MutableBackend implements BackendInterface {
     if (typeof this.inner.queryGraphql === 'function') {
       return this.inner.queryGraphql(query, variables);
     }
-    return Promise.reject(new Error('GraphQL passthrough is not supported by backend'));
+    throw new Error('GraphQL passthrough is not supported by backend');
   }
   list(opts?: Parameters<BackendInterface['list']>[0]) {
     return this.inner.list(opts);
@@ -1162,6 +1206,19 @@ export function parseCliArgs(argv: string[]): {
   let port = Number.isInteger(envPort) && envPort > 0 ? envPort : DEFAULT_MCP_PORT;
   let logDir: string | undefined;
 
+  const parseStrictPositiveInt = (raw: string, flagName: string): number => {
+    if (!/^\d+$/.test(raw)) {
+      throw new Error(`Invalid value for ${flagName}: ${raw}`);
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`Invalid value for ${flagName}: ${raw}`);
+    }
+
+    return parsed;
+  };
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if ((arg === '--workspace' || arg === '--workspace-root') && argv[i + 1]) {
@@ -1175,10 +1232,7 @@ export function parseCliArgs(argv: string[]): {
       }
       i += 1;
     } else if (arg === '--port' && argv[i + 1]) {
-      const parsedPort = Number.parseInt(argv[i + 1]!, 10);
-      if (Number.isInteger(parsedPort) && parsedPort > 0) {
-        port = parsedPort;
-      }
+      port = parseStrictPositiveInt(argv[i + 1]!, '--port');
       i += 1;
     } else if (arg === '--log-dir' && argv[i + 1]) {
       logDir = argv[i + 1]!;
