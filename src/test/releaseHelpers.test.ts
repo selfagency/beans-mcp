@@ -4,6 +4,7 @@ import {
   buildTokenUserConfig,
   extractAuthTokenFromNpmrc,
   getRegistryAuthKey,
+  resolveNpmPublishAuthCandidates,
   resolveNpmPublishAuth,
 } from '../../scripts/lib/npm-auth.js';
 import {
@@ -44,6 +45,31 @@ describe('npm auth helpers', () => {
         '',
       ].join('\n'),
     );
+  });
+
+  it('returns auth candidates in precedence order for fallback attempts', () => {
+    const candidates = resolveNpmPublishAuthCandidates({
+      env: { NPM_TOKEN: 'env-token', NODE_AUTH_TOKEN: 'node-token' },
+      registry: 'https://registry.npmjs.org',
+      userConfigContent: '//registry.npmjs.org/:_authToken=file-token\n',
+    });
+
+    expect(candidates.map(candidate => candidate.source)).toEqual([
+      'NPM_TOKEN',
+      'NODE_AUTH_TOKEN',
+      'NPM_CONFIG_USERCONFIG',
+    ]);
+  });
+
+  it('deduplicates auth candidates when tokens are identical', () => {
+    const candidates = resolveNpmPublishAuthCandidates({
+      env: { NPM_TOKEN: 'same-token', NODE_AUTH_TOKEN: 'same-token' },
+      registry: 'https://registry.npmjs.org',
+      userConfigContent: '//registry.npmjs.org/:_authToken=same-token\n',
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.source).toBe('NPM_TOKEN');
   });
 });
 

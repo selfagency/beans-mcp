@@ -38,23 +38,34 @@ export function extractAuthTokenFromNpmrc(npmrcContent, registry) {
 }
 
 export function resolveNpmPublishAuth({ env, registry, userConfigContent }) {
+  const [firstCandidate] = resolveNpmPublishAuthCandidates({ env, registry, userConfigContent });
+  if (firstCandidate) {
+    return firstCandidate;
+  }
+
+  return { token: '', source: 'none', registry: normalizeRegistry(registry) };
+}
+
+export function resolveNpmPublishAuthCandidates({ env, registry, userConfigContent }) {
   const normalizedRegistry = normalizeRegistry(registry);
-  const envToken = env.NPM_TOKEN?.trim();
-  if (envToken) {
-    return { token: envToken, source: 'NPM_TOKEN', registry: normalizedRegistry };
-  }
+  const candidates = [];
+  const seenTokens = new Set();
 
-  const nodeAuthToken = env.NODE_AUTH_TOKEN?.trim();
-  if (nodeAuthToken) {
-    return { token: nodeAuthToken, source: 'NODE_AUTH_TOKEN', registry: normalizedRegistry };
-  }
+  const addCandidate = (token, source) => {
+    const trimmed = token?.trim();
+    if (!trimmed || seenTokens.has(trimmed)) {
+      return;
+    }
 
-  const npmrcToken = extractAuthTokenFromNpmrc(userConfigContent, normalizedRegistry);
-  if (npmrcToken) {
-    return { token: npmrcToken, source: 'NPM_CONFIG_USERCONFIG', registry: normalizedRegistry };
-  }
+    seenTokens.add(trimmed);
+    candidates.push({ token: trimmed, source, registry: normalizedRegistry });
+  };
 
-  return { token: '', source: 'none', registry: normalizedRegistry };
+  addCandidate(env.NPM_TOKEN, 'NPM_TOKEN');
+  addCandidate(env.NODE_AUTH_TOKEN, 'NODE_AUTH_TOKEN');
+  addCandidate(extractAuthTokenFromNpmrc(userConfigContent, normalizedRegistry), 'NPM_CONFIG_USERCONFIG');
+
+  return candidates;
 }
 
 export function buildTokenUserConfig({ registry, token }) {

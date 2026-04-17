@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
-import { buildTokenUserConfig, normalizeRegistry, resolveNpmPublishAuth } from './lib/npm-auth.js';
+import { buildTokenUserConfig, normalizeRegistry, resolveNpmPublishAuthCandidates } from './lib/npm-auth.js';
 import { buildRollbackPlan, getReleaseMetadataFiles, resolveOtpItemId } from './lib/release-state.js';
 
 $.verbose = false;
@@ -82,6 +82,29 @@ function resolveGitExecutable() {
   }
 
   return null;
+}
+
+function buildSanitizedNpmEnv({ baseEnv, userConfigPath, registry, token }) {
+  const env = { ...baseEnv };
+
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('npm_config_') || key.startsWith('NPM_CONFIG_')) {
+      delete env[key];
+    }
+  }
+
+  env.NPM_CONFIG_USERCONFIG = userConfigPath;
+  env.npm_config_userconfig = userConfigPath;
+  env.NPM_CONFIG_REGISTRY = registry;
+  env.npm_config_registry = registry;
+  if (token) {
+    // Keep both spellings so any nested tooling that prefers env-token auth can resolve it.
+    env.NPM_TOKEN = token;
+    env.NODE_AUTH_TOKEN = token;
+  }
+  env.CI ||= 'true';
+
+  return env;
 }
 
 async function rollback() {
@@ -178,13 +201,13 @@ async function main() {
   const defaultUserConfigPath = process.env.NPM_CONFIG_USERCONFIG || resolve(homedir(), '.npmrc');
   const NPM_REGISTRY = normalizeRegistry(process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/');
   const existingUserConfig = existsSync(defaultUserConfigPath) ? readFileSync(defaultUserConfigPath, 'utf8') : '';
-  const publishAuth = resolveNpmPublishAuth({
+  const publishAuthCandidates = resolveNpmPublishAuthCandidates({
     env: process.env,
     registry: NPM_REGISTRY,
     userConfigContent: existingUserConfig,
   });
 
-  if (!publishAuth.token) {
+  if (publishAuthCandidates.length === 0) {
     console.error(`❌ No npm auth token found for ${NPM_REGISTRY}`);
     console.error('   Tips:');
     console.error('   - Export NPM_TOKEN or NODE_AUTH_TOKEN before running the release script');
@@ -197,31 +220,34 @@ async function main() {
 
   const npmUserConfigDir = mkdtempSync(resolve(tmpdir(), 'beans-mcp-npm-'));
   const npmUserConfigPath = resolve(npmUserConfigDir, '.npmrc');
-  writeFileSync(npmUserConfigPath, buildTokenUserConfig({ registry: NPM_REGISTRY, token: publishAuth.token }), 'utf8');
+  let selectedAuth = null;
+  let selectedNpmEnv = null;
 
-  process.env.NPM_CONFIG_USERCONFIG = npmUserConfigPath;
-  process.env.npm_config_userconfig = npmUserConfigPath;
-  process.env.NPM_CONFIG_REGISTRY = NPM_REGISTRY;
-  process.env.npm_config_registry = NPM_REGISTRY;
-  process.env.CI ||= 'true';
+  for (const candidate of publishAuthCandidates) {
+    writeFileSync(npmUserConfigPath, buildTokenUserConfig({ registry: NPM_REGISTRY, token: candidate.token }), 'utf8');
 
-  $.env = {
-    ...process.env,
-    NPM_CONFIG_USERCONFIG: npmUserConfigPath,
-    npm_config_userconfig: npmUserConfigPath,
-    NPM_CONFIG_REGISTRY: NPM_REGISTRY,
-    npm_config_registry: NPM_REGISTRY,
-    CI: process.env.CI,
-  };
+    const candidateEnv = buildSanitizedNpmEnv({
+      baseEnv: process.env,
+      userConfigPath: npmUserConfigPath,
+      registry: NPM_REGISTRY,
+      token: candidate.token,
+    });
 
-  console.log(`🔐 Using npm auth from ${publishAuth.source}.`);
+    try {
+      await $({ env: candidateEnv })`npm whoami --userconfig=${npmUserConfigPath} --registry=${NPM_REGISTRY}`;
+      selectedAuth = candidate;
+      selectedNpmEnv = candidateEnv;
+      break;
+    } catch {
+      // Try the next candidate. This commonly happens when NPM_TOKEN is stale but ~/.npmrc is valid.
+    }
+  }
 
-  // Check npm credentials against the intended registry (non-interactive).
-  try {
-    await $`npm whoami --userconfig=${npmUserConfigPath} --registry=${NPM_REGISTRY}`;
-  } catch {
+  if (!selectedAuth || !selectedNpmEnv) {
     console.error(`❌ Not logged in to npm (registry: ${NPM_REGISTRY}).`);
+    console.error('   Tried auth sources in order: NPM_TOKEN, NODE_AUTH_TOKEN, NPM_CONFIG_USERCONFIG');
     console.error('   Tips:');
+    console.error('   - If NPM_TOKEN is set, ensure it is valid (stale tokens override npm login by default)');
     console.error(`   - Ensure your token is in ${npmUserConfigPath}`);
     console.error('   - File should contain a line like: //registry.npmjs.org/:_authToken=<YOUR_TOKEN>');
     console.error('   - Or export NPM_TOKEN in your environment before running the release script');
@@ -230,6 +256,16 @@ async function main() {
     rmSync(npmUserConfigDir, { recursive: true, force: true });
     process.exit(1);
   }
+
+  process.env.NPM_CONFIG_USERCONFIG = npmUserConfigPath;
+  process.env.npm_config_userconfig = npmUserConfigPath;
+  process.env.NPM_CONFIG_REGISTRY = NPM_REGISTRY;
+  process.env.npm_config_registry = NPM_REGISTRY;
+  process.env.CI ||= 'true';
+
+  $.env = selectedNpmEnv;
+
+  console.log(`🔐 Using npm auth from ${selectedAuth.source}.`);
 
   // Resolve GitHub auth token: prefer env vars, then ask the gh CLI.
   let githubToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? '';
@@ -468,7 +504,11 @@ async function main() {
     if (!otp) {
       throw new Error(`Failed to retrieve npm OTP from 1Password item ${otpItemId}`);
     }
-    await $`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag} --otp=${otp}`;
+
+    // Re-verify auth right before publish using the exact same env/config path,
+    // so npm publish never falls back to interactive login behavior.
+    await $({ env: selectedNpmEnv })`npm whoami --userconfig=${npmUserConfigPath} --registry=${NPM_REGISTRY}`;
+    await $({ env: selectedNpmEnv })`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag} --otp=${otp}`;
     $.verbose = false;
     releaseDone = true;
     console.log(`✅ Published ${tag} to npm.`);
