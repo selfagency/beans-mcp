@@ -54,7 +54,8 @@ export function extractVersionFromOutput(output: string): string | null {
     return null;
   }
 
-  const match = trimmed.match(/(?:^|[^\d])v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/);
+  const versionRegex = /(?:^|[^\d])v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/;
+  const match = versionRegex.exec(trimmed);
   return match?.[1] ?? null;
 }
 
@@ -192,7 +193,7 @@ function completeMarkdownTasks(body: string): { nextBody: string; totalTaskCount
   let totalTaskCount = 0;
   let updatedTaskCount = 0;
 
-  const taskLinePattern = /^\s*(?:[-*+]|\d+\.)\s+\[(?: |x|X)\]/;
+  const taskLinePattern = /^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/;
   const uncheckedTaskLinePattern = /^(\s*(?:[-*+]|\d+\.)\s+\[)\s(\].*)$/;
 
   const nextLines = lines.map(line => {
@@ -201,7 +202,7 @@ function completeMarkdownTasks(body: string): { nextBody: string; totalTaskCount
     }
 
     totalTaskCount += 1;
-    const uncheckedMatch = line.match(uncheckedTaskLinePattern);
+    const uncheckedMatch = uncheckedTaskLinePattern.exec(line);
     if (!uncheckedMatch) {
       return line;
     }
@@ -225,7 +226,7 @@ export function initHandler(backend: BackendInterface) {
 export function archiveHandler(backend: BackendInterface) {
   return async () => {
     if (typeof backend.archive !== 'function') {
-      throw new Error('Archive is not supported by the current backend');
+      throw new TypeError('Archive is not supported by the current backend');
     }
 
     return makeTextAndStructured(await backend.archive());
@@ -328,24 +329,25 @@ export function reopenHandler(backend: BackendInterface) {
   }) => {
     const beans = await backend.list();
     const bean = await getBeanById(backend, beanId, beans);
-    if (bean.status !== requiredCurrentStatus) {
-      throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
-    }
-    const updatedParentBean = await backend.update(beanId, { status: targetStatus });
-    const cascade = await cascadeStatusToDescendants(backend, beanId, targetStatus, {
-      onlyCurrentStatuses: CLOSED_STATUSES,
-      beans,
-    });
+    if (bean.status === requiredCurrentStatus) {
+      const updatedParentBean = await backend.update(beanId, { status: targetStatus });
+      const cascade = await cascadeStatusToDescendants(backend, beanId, targetStatus, {
+        onlyCurrentStatuses: CLOSED_STATUSES,
+        beans,
+      });
 
-    return makeTextAndStructured({
-      bean: updatedParentBean,
-      cascade: {
-        totalDescendants: cascade.totalDescendants,
-        updatedBeanIds: cascade.updatedBeanIds,
-        skippedBeanIds: cascade.skippedBeanIds,
-        errors: cascade.errors,
-      },
-    });
+      return makeTextAndStructured({
+        bean: updatedParentBean,
+        cascade: {
+          totalDescendants: cascade.totalDescendants,
+          updatedBeanIds: cascade.updatedBeanIds,
+          skippedBeanIds: cascade.skippedBeanIds,
+          errors: cascade.errors,
+        },
+      });
+    }
+
+    throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
   };
 }
 
@@ -378,9 +380,10 @@ export function updateHandler(backend: BackendInterface) {
       ifMatch: input.ifMatch,
     });
 
-    const shouldCascadeClose = Boolean(input.status && CLOSED_STATUSES.has(input.status));
+    const closeStatus = input.status;
+    const shouldCascadeClose = Boolean(closeStatus && CLOSED_STATUSES.has(closeStatus));
     const cascade = shouldCascadeClose
-      ? await cascadeStatusToDescendants(backend, input.beanId, input.status as string, {
+      ? await cascadeStatusToDescendants(backend, input.beanId, closeStatus!, {
           beans: await backend.list(),
         })
       : null;
@@ -546,7 +549,7 @@ export function queryHandler(backend: BackendInterface) {
   }) => {
     if (opts.operation === 'graphql') {
       if (typeof backend.queryGraphql !== 'function') {
-        throw new Error('GraphQL passthrough is not supported by the current backend');
+        throw new TypeError('GraphQL passthrough is not supported by the current backend');
       }
 
       const result = await backend.queryGraphql(opts.graphql || '', opts.variables);
@@ -1067,7 +1070,7 @@ export class MutableBackend implements BackendInterface {
     if (typeof this.inner.queryGraphql === 'function') {
       return this.inner.queryGraphql(query, variables);
     }
-    throw new Error('GraphQL passthrough is not supported by backend');
+    throw new TypeError('GraphQL passthrough is not supported by backend');
   }
   list(opts?: Parameters<BackendInterface['list']>[0]) {
     return this.inner.list(opts);

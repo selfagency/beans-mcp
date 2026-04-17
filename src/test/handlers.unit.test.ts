@@ -81,6 +81,14 @@ describe('Handlers (unit)', () => {
     await expect(getBeanById(backend, 'missing')).rejects.toThrow(/Bean not found/);
   });
 
+  it('getBeanById uses provided beans list without calling backend.list', async () => {
+    const backend = makeBackend();
+    const provided = [{ ...sampleBean, id: 'provided-id' }];
+    const bean = await getBeanById(backend, 'provided-id', provided as any);
+    expect(bean.id).toBe('provided-id');
+    expect(backend.list).not.toHaveBeenCalled();
+  });
+
   it('initHandler calls backend.init and wraps result', async () => {
     const backend = makeBackend();
     const res = await initHandler(backend)({ prefix: 'pfx' });
@@ -96,6 +104,11 @@ describe('Handlers (unit)', () => {
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
     expect(data.archived).toBe(true);
     expect(data.archivedCount).toBe(2);
+  });
+
+  it('archiveHandler throws TypeError when archive is unsupported', async () => {
+    const backend = makeBackend({ archive: undefined });
+    await expect(archiveHandler(backend as any)({} as never)).rejects.toBeInstanceOf(TypeError);
   });
 
   it('viewHandler returns bean structured content', async () => {
@@ -221,7 +234,9 @@ describe('Handlers (unit)', () => {
     expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'todo' });
 
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
-    expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+    expect(data.cascade.updatedBeanIds.toSorted((a: string, b: string) => a.localeCompare(b))).toEqual(
+      ['child-1', 'child-2'].toSorted((a, b) => a.localeCompare(b)),
+    );
     expect(data.cascade.skippedBeanIds).toEqual(['child-3']);
   });
 
@@ -245,7 +260,31 @@ describe('Handlers (unit)', () => {
     expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'completed' });
 
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
-    expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+    expect(data.cascade.updatedBeanIds.toSorted((a: string, b: string) => a.localeCompare(b))).toEqual(
+      ['child-1', 'child-2'].toSorted((a, b) => a.localeCompare(b)),
+    );
+  });
+
+  it('updateHandler returns cascade errors when descendant updates fail', async () => {
+    const backend = makeBackend({
+      list: vi.fn(async () => [
+        { ...sampleBean, id: 'parent', status: 'todo' },
+        { ...sampleBean, id: 'child-ok', parentId: 'parent', status: 'todo' },
+        { ...sampleBean, id: 'child-fail', parentId: 'parent', status: 'todo' },
+      ]),
+      update: vi.fn(async (id: string, updates: any) => {
+        if (id === 'child-fail') {
+          throw new Error('boom');
+        }
+        return { ...sampleBean, id, ...updates };
+      }),
+    });
+
+    const res = await updateHandler(backend)({ beanId: 'parent', status: 'completed' } as any);
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+
+    expect(data.cascade.updatedBeanIds).toContain('child-ok');
+    expect(data.cascade.errors).toEqual([{ beanId: 'child-fail', error: 'boom' }]);
   });
 
   it('completeTasksHandler marks markdown tasks complete', async () => {
@@ -366,6 +405,13 @@ describe('Handlers (unit)', () => {
     expect(backend.queryGraphql).toHaveBeenCalledWith('{ beans { id } }', { limit: 1 });
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
     expect(data.data.beans[0].id).toBe('b1');
+  });
+
+  it('queryHandler throws TypeError when graphql passthrough is unsupported', async () => {
+    const backend = makeBackend({ queryGraphql: undefined });
+    await expect(
+      queryHandler(backend as any)({ operation: 'graphql', graphql: '{ beans { id } }' }),
+    ).rejects.toBeInstanceOf(TypeError);
   });
 
   it('bulkCreateHandler emits warning summary for deprecated description usage', async () => {

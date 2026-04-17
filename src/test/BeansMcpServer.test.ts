@@ -434,7 +434,9 @@ describe('createBeansMcpServer', () => {
     });
 
     const result = await backend.updateBeanFrontmatter('test.md', { pr: '123', branch: 'feature/x' });
-    expect(result.updatedFields.sort()).toEqual(['branch', 'pr'].sort());
+    expect(result.updatedFields.toSorted((a, b) => a.localeCompare(b))).toEqual(
+      ['branch', 'pr'].toSorted((a, b) => a.localeCompare(b)),
+    );
   });
 
   it('should create beans with body field', async () => {

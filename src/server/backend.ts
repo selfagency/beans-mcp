@@ -703,6 +703,47 @@ export class BeansCliBackend implements BackendInterface {
     return !/^[A-Za-z0-9._-]+$/.test(value);
   }
 
+  private parseFrontmatterLine(line: string): { key: string; rawValue: string } | null {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) {
+      return null;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    if (key.length === 0) {
+      return null;
+    }
+
+    for (const character of key) {
+      const isAlphaNumericUnderscore =
+        (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') ||
+        character === '_';
+
+      if (!isAlphaNumericUnderscore) {
+        return null;
+      }
+    }
+
+    const rawValue = line.slice(separatorIndex + 1).trimStart();
+    return { key, rawValue };
+  }
+
+  private buildFrontmatterIndex(frontmatterLines: string[]): Map<string, number> {
+    const indexByKey = new Map<string, number>();
+
+    frontmatterLines.forEach((line, index) => {
+      const parsed = this.parseFrontmatterLine(line);
+      if (!parsed) {
+        return;
+      }
+      indexByKey.set(parsed.key, index);
+    });
+
+    return indexByKey;
+  }
+
   private serializeFrontmatterValue(key: string, value: string | string[]): string {
     if (Array.isArray(value)) {
       return JSON.stringify(value);
@@ -733,7 +774,7 @@ export class BeansCliBackend implements BackendInterface {
     }
 
     if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-      return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/''/g, "'");
+      return trimmed.slice(1, -1).replaceAll('\\"', '"').replaceAll('\\\\', '\\').replaceAll("''", "'");
     }
 
     return trimmed;
@@ -775,12 +816,12 @@ export class BeansCliBackend implements BackendInterface {
     const fields: Record<string, string | string[]> = {};
 
     for (const line of frontmatterLines) {
-      const match = line.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
-      if (!match) {
+      const parsed = this.parseFrontmatterLine(line);
+      if (!parsed) {
         continue;
       }
 
-      fields[match[1]!] = this.deserializeFrontmatterValue(match[2] || '');
+      fields[parsed.key] = this.deserializeFrontmatterValue(parsed.rawValue);
     }
 
     return fields;
@@ -916,14 +957,7 @@ export class BeansCliBackend implements BackendInterface {
     }
 
     const nextLines = [...frontmatterLines];
-    const indexByKey = new Map<string, number>();
-
-    nextLines.forEach((line, index) => {
-      const match = line.match(/^([a-zA-Z0-9_]+):\s*/);
-      if (match) {
-        indexByKey.set(match[1]!, index);
-      }
-    });
+    let indexByKey = this.buildFrontmatterIndex(nextLines);
 
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) {
@@ -934,13 +968,7 @@ export class BeansCliBackend implements BackendInterface {
       if (value === null) {
         if (existingIndex !== undefined) {
           nextLines.splice(existingIndex, 1);
-          indexByKey.clear();
-          nextLines.forEach((line, index) => {
-            const match = line.match(/^([a-zA-Z0-9_]+):\s*/);
-            if (match) {
-              indexByKey.set(match[1]!, index);
-            }
-          });
+          indexByKey = this.buildFrontmatterIndex(nextLines);
         }
         continue;
       }
@@ -948,8 +976,8 @@ export class BeansCliBackend implements BackendInterface {
       const serialized = `${key}: ${this.serializeFrontmatterValue(key, value)}`;
       if (existingIndex !== undefined) {
         const existingLine = nextLines[existingIndex] ?? '';
-        const existingMatch = existingLine.match(/^[a-zA-Z0-9_]+:\s*(.*)$/);
-        const commentPart = existingMatch ? this.splitYamlInlineComment(existingMatch[1] || '').commentPart : '';
+        const existingParsed = this.parseFrontmatterLine(existingLine);
+        const commentPart = existingParsed ? this.splitYamlInlineComment(existingParsed.rawValue).commentPart : '';
         nextLines[existingIndex] = `${serialized}${commentPart}`;
       } else {
         nextLines.push(serialized);

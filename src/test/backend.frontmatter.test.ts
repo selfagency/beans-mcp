@@ -37,7 +37,9 @@ describe('BeansCliBackend.updateBeanFrontmatter', () => {
       branch: 'feature/cascade-status-and-skills-npm',
     });
 
-    expect(result.updatedFields.sort()).toEqual(['branch', 'pr', 'title'].sort());
+    expect(result.updatedFields.toSorted((a, b) => a.localeCompare(b))).toEqual(
+      ['branch', 'pr', 'title'].toSorted((a, b) => a.localeCompare(b)),
+    );
     expect(result.frontmatter.title).toBe('New title');
     expect(result.frontmatter.pr).toBe('123');
     expect(result.frontmatter.branch).toBe('feature/cascade-status-and-skills-npm');

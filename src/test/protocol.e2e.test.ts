@@ -426,7 +426,9 @@ describe('beans_update', () => {
       });
 
       const data = parseResult(result) as { cascade: { updatedBeanIds: string[] } };
-      expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+      expect(data.cascade.updatedBeanIds.toSorted((a, b) => a.localeCompare(b))).toEqual(
+        ['child-1', 'child-2'].toSorted((a, b) => a.localeCompare(b)),
+      );
       expect(backend.update).toHaveBeenCalledWith('child-1', { status: 'completed' });
       expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'completed' });
     } finally {
@@ -776,7 +778,9 @@ describe('beans_query', () => {
       const result = await client.callTool({ name: 'beans_query', arguments: { operation: 'ready' } });
       const data = parseResult(result) as { count: number; beans: BeanRecord[] };
       expect(data.count).toBe(2);
-      expect(data.beans.map(b => b.id).sort()).toEqual(['active', 'todo-ready'].sort());
+      expect(data.beans.map(b => b.id).toSorted((a, b) => a.localeCompare(b))).toEqual(
+        ['active', 'todo-ready'].toSorted((a, b) => a.localeCompare(b)),
+      );
     } finally {
       await cleanup();
     }
@@ -911,7 +915,9 @@ describe('beans_bean_file', () => {
         },
       });
       const data = parseResult(result) as { updatedFields: string[]; frontmatter: Record<string, unknown> };
-      expect(data.updatedFields.sort()).toEqual(['branch', 'pr'].sort());
+      expect(data.updatedFields.toSorted((a, b) => a.localeCompare(b))).toEqual(
+        ['branch', 'pr'].toSorted((a, b) => a.localeCompare(b)),
+      );
       expect(data.frontmatter.pr).toBe('123');
       expect(backend.updateBeanFrontmatter).toHaveBeenCalledWith('bean-1.md', {
         pr: '123',
