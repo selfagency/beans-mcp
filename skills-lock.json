@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "git-mcp-workflow": {
+      "source": "selfagency/git-mcp",
+      "sourceType": "github",
+      "computedHash": "ce8b4a5f89898d15302e9725bad35002a0ac615e59f83fdfec8a149b1fee7926"
+    }
+  }
+}
