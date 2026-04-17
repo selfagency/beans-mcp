@@ -181,6 +181,12 @@ describe('createBeansMcpServer', () => {
     })),
     readBeanFile: vi.fn(async () => ({ path: '/file', content: 'content' })),
     editBeanFile: vi.fn(async () => ({ path: '/file', bytes: 10 })),
+    updateBeanFrontmatter: vi.fn(async (_path, updates) => ({
+      path: '/file',
+      bytes: 10,
+      updatedFields: Object.keys(updates),
+      frontmatter: updates,
+    })),
     createBeanFile: vi.fn(async () => ({
       path: '/file',
       bytes: 10,
@@ -421,6 +427,18 @@ describe('createBeansMcpServer', () => {
     expect(result.created).toBe(true);
   });
 
+  it('should atomically update bean frontmatter', async () => {
+    const { backend } = await createBeansMcpServer({
+      workspaceRoot: '/test',
+      backend: mockBackend,
+    });
+
+    const result = await backend.updateBeanFrontmatter('test.md', { pr: '123', branch: 'feature/x' });
+    expect(result.updatedFields.toSorted((a, b) => a.localeCompare(b))).toEqual(
+      ['branch', 'pr'].toSorted((a, b) => a.localeCompare(b)),
+    );
+  });
+
   it('should create beans with body field', async () => {
     const { backend } = await createBeansMcpServer({
       workspaceRoot: '/test',
@@ -538,6 +556,7 @@ describe('MutableBackend', () => {
   function makeInner(overrides: Partial<BackendInterface> = {}): BackendInterface {
     return {
       init: vi.fn(async () => ({ initialized: true })),
+      archive: vi.fn(async () => ({ archived: true, archivedCount: 1 })),
       list: vi.fn(async () => []),
       create: vi.fn(async input => ({
         id: 'b1',
@@ -582,6 +601,12 @@ describe('MutableBackend', () => {
       readOutputLog: vi.fn(async () => ({ path: '/log', content: 'log', linesReturned: 0 })),
       readBeanFile: vi.fn(async () => ({ path: '/f', content: 'c' })),
       editBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1 })),
+      updateBeanFrontmatter: vi.fn(async (_path, updates) => ({
+        path: '/f',
+        bytes: 1,
+        updatedFields: Object.keys(updates),
+        frontmatter: updates,
+      })),
       createBeanFile: vi.fn(async () => ({ path: '/f', bytes: 1, created: true })),
       deleteBeanFile: vi.fn(async () => ({ path: '/f', deleted: true })),
       ...overrides,
@@ -607,6 +632,9 @@ describe('MutableBackend', () => {
     await m.delete('b1');
     expect(inner.delete).toHaveBeenCalledWith('b1');
 
+    await m.archive();
+    expect(inner.archive).toHaveBeenCalled();
+
     await m.bulkCreate([{ title: 'T', type: 'task' }], 'p1');
     expect(inner.bulkCreate).toHaveBeenCalledWith([{ title: 'T', type: 'task' }], 'p1');
 
@@ -628,6 +656,9 @@ describe('MutableBackend', () => {
     await m.editBeanFile('a.md', 'content');
     expect(inner.editBeanFile).toHaveBeenCalledWith('a.md', 'content');
 
+    await m.updateBeanFrontmatter('a.md', { pr: '123' });
+    expect(inner.updateBeanFrontmatter).toHaveBeenCalledWith('a.md', { pr: '123' });
+
     await m.createBeanFile('a.md', 'content', { overwrite: true });
     expect(inner.createBeanFile).toHaveBeenCalledWith('a.md', 'content', { overwrite: true });
 
@@ -648,6 +679,13 @@ describe('MutableBackend', () => {
     await m.list();
     expect(inner1.list).toHaveBeenCalledTimes(1); // not called again
     expect(inner2.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('archive throws TypeError when unsupported by the inner backend', async () => {
+    const inner = makeInner({ archive: undefined });
+    const m = new MutableBackend(inner as BackendInterface);
+
+    expect(() => m.archive()).toThrow(TypeError);
   });
 });
 

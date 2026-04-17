@@ -30,29 +30,36 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 
 ## Summary of public MCP tools
 
-| Tool                | Description                                                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `beans_init`        | Initialize the workspace (optional `prefix`).                                                                                                                                        |
-| `beans_view`        | Fetch full bean details by `beanId` or `beanIds`.                                                                                                                                    |
-| `beans_create`      | Create a new bean (title/type + optional body/parent).                                                                                                                               |
-| `beans_bulk_create` | Create multiple beans in one call, optionally under a shared parent.                                                                                                                 |
-| `beans_update`      | Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`). |
-| `beans_bulk_update` | Update multiple beans in one call, optionally reassigning them to a shared parent.                                                                                                   |
-| `beans_delete`      | Delete one or many beans (`beanId` or `beanIds`, optional `force`).                                                                                                                  |
-| `beans_reopen`      | Reopen a completed or scrapped bean to an active status.                                                                                                                             |
-| `beans_query`       | Unified list/search/filter/sort/ready/llm_context/open_config operations.                                                                                                            |
-| `beans_bean_file`   | Read/edit/create/delete files under `.beans`.                                                                                                                                        |
-| `beans_output`      | Read extension output logs or show guidance.                                                                                                                                         |
+| Tool                   | Description                                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `beans_init`           | Initialize the workspace (optional `prefix`).                                                                                                                                        |
+| `beans_archive`        | Archive completed/scrapped beans.                                                                                                                                                    |
+| `beans_view`           | Fetch full bean details by `beanId` or `beanIds`.                                                                                                                                    |
+| `beans_create`         | Create a new bean (title/type + optional body/parent).                                                                                                                               |
+| `beans_bulk_create`    | Create multiple beans in one call, optionally under a shared parent.                                                                                                                 |
+| `beans_update`         | Consolidated metadata + body updates (status/type/priority/parent/clearParent/blocking/blockedBy/body/bodyAppend/bodyReplace) plus optional optimistic concurrency hint (`ifMatch`). |
+| `beans_bulk_update`    | Update multiple beans in one call, optionally reassigning them to a shared parent.                                                                                                   |
+| `beans_complete_tasks` | Mark all markdown checklist tasks within a bean as complete.                                                                                                                         |
+| `beans_delete`         | Delete one or many beans (`beanId` or `beanIds`, optional `force`).                                                                                                                  |
+| `beans_reopen`         | Reopen a completed or scrapped bean to an active status.                                                                                                                             |
+| `beans_query`          | Unified list/search/filter/sort/ready operations, with GraphQL passthrough.                                                                                                          |
+| `beans_bean_file`      | Read/edit/create/delete files under `.beans`.                                                                                                                                        |
+| `beans_output`         | Read extension output logs or show guidance.                                                                                                                                         |
 
 ### Notes
 
 - The `beans_query` tool is intentionally broad: prefer it for listing, searching, filtering or sorting beans, and for generating Copilot instructions (`operation: 'llm_context'`).
 - All file and log operations validate paths to keep them within the workspace or the VS Code log directory. The `.beans/` prefix is automatically stripped from paths — you can pass either `some-bean.md` or `.beans/some-bean.md` and the result is the same.
 - `beans_update` replaces many fine-grained update tools; callers should use it to keep the public tool surface small and predictable.
+- `beans_archive` provides CLI parity for archiving completed/scrapped beans.
+- Closing a parent bean via `beans_update` (`status: completed` or `status: scrapped`) cascades the same status to all descendants.
+- Reopening a parent bean via `beans_reopen` cascades the target status to closed descendants (`completed` / `scrapped`).
 - `beans_bulk_create` and `beans_bulk_update` are best-effort: they process each item sequentially and return a per-item result array with success/error entries rather than failing atomically.
 - Frontmatter `title:` values are automatically double-quoted on write. Pass raw titles — quoting and escaping is handled for you.
+- `beans_bean_file` supports `update_frontmatter` for atomic frontmatter-only writes; supported fields include `pr` and `branch`.
 - Unfiltered list results are cached with a short burst TTL and a timestamp-probe refresh strategy. Mutation tools (`beans_create`, `beans_update`, `beans_delete`, etc.) invalidate the cache immediately.
 - Version mismatches between `beans-mcp` and the Beans CLI are warning-only and non-blocking by design.
+- When `beanId` is missing in tool input, validation errors include a hint: `Did you mean \`beanId\`?`.
 
 ## Examples
 
@@ -99,6 +106,20 @@ Response (structuredContent):
     "updatedAt": "2025-12-02T08:00:00Z"
   }
 }
+```
+
+### beans_archive
+
+Request:
+
+```json
+{}
+```
+
+Response (example):
+
+```json
+{ "archived": true, "archivedCount": 3 }
 ```
 
 ### beans_create
@@ -287,6 +308,28 @@ Response:
 { "bean": { "id": "bean-closed", "status": "todo" } }
 ```
 
+### beans_complete_tasks
+
+Request:
+
+```json
+{ "beanId": "bean-abc" }
+```
+
+Response:
+
+```json
+{
+  "bean": {
+    "id": "bean-abc",
+    "status": "todo"
+  },
+  "totalTaskCount": 5,
+  "updatedTaskCount": 3,
+  "unchangedTaskCount": 2
+}
+```
+
 ### beans_query — examples
 
 Refresh (list all beans):
@@ -346,6 +389,25 @@ Response (structuredContent):
 }
 ```
 
+Raw GraphQL passthrough (CLI parity with `beans query`):
+
+```json
+{
+  "operation": "graphql",
+  "graphql": "{ beans(filter: { type: [\"bug\"] }) { id title status } }"
+}
+```
+
+With variables:
+
+```json
+{
+  "operation": "graphql",
+  "graphql": "query($q: String!) { beans(filter: { search: $q }) { id title } }",
+  "variables": { "q": "authentication" }
+}
+```
+
 ### beans_bean_file
 
 Request (read):
@@ -360,6 +422,35 @@ Response:
 {
   "path": "/workspace/.beans/beans-vscode-123--title.md",
   "content": "---\n...frontmatter...\n---\n# Title\n"
+}
+```
+
+Request (atomic frontmatter update):
+
+```json
+{
+  "operation": "update_frontmatter",
+  "path": "beans-vscode-123--title.md",
+  "fields": {
+    "status": "in-progress",
+    "pr": "123",
+    "branch": "feature/cascade-status-and-skills-npm"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "path": "/workspace/.beans/beans-vscode-123--title.md",
+  "bytes": 256,
+  "updatedFields": ["status", "pr", "branch"],
+  "frontmatter": {
+    "status": "in-progress",
+    "pr": "123",
+    "branch": "feature/cascade-status-and-skills-npm"
+  }
 }
 ```
 
@@ -432,6 +523,15 @@ CLI-compatible entrypoint for launching the server.
 ### Types & Schemas
 
 Export of GraphQL schema, Zod validation schemas, and TypeScript types for Beans records and operations.
+
+## Agent Skills (`skills-npm`)
+
+This package ships built-in Agent Skills under `skills/` using the npm-based skills convention.
+
+- Skill path in package: `skills/beans-mcp/SKILL.md`
+- Compatible with discovery tools that scan: `node_modules/**/skills/*/SKILL.md`
+
+To symlink installed npm-packaged skills into your agent workspace, you can use `skills-npm` in your consuming project.
 
 ## License
 

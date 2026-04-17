@@ -30,6 +30,14 @@ describe('parseCliArgs', () => {
     expect(result.port).toBe(8080);
   });
 
+  it('should reject non-numeric --port values', () => {
+    expect(() => parseCliArgs(['--port', 'abc'])).toThrow('Invalid value for --port: abc');
+  });
+
+  it('should reject non-positive --port values', () => {
+    expect(() => parseCliArgs(['--port', '0'])).toThrow('Invalid value for --port: 0');
+  });
+
   it('should parse --log-dir flag', () => {
     const result = parseCliArgs(['--log-dir', '/tmp/logs']);
     expect(result.logDir).toBe('/tmp/logs');

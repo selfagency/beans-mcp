@@ -23,6 +23,8 @@ export { sortBeans };
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_VERSION = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
+const CLOSED_STATUSES = new Set(['completed', 'scrapped']);
+const BEAN_ID_HINT = 'Missing required field `beanId`. Did you mean `beanId`?';
 
 function getSafeCliEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const whitelist = ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'LC_CTYPE', 'SHELL'];
@@ -52,7 +54,8 @@ export function extractVersionFromOutput(output: string): string | null {
     return null;
   }
 
-  const match = trimmed.match(/(?:^|[^\d])v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/);
+  const versionRegex = /(?:^|[^\d])v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/;
+  const match = versionRegex.exec(trimmed);
   return match?.[1] ?? null;
 }
 
@@ -75,10 +78,14 @@ export async function detectBeansCliVersion(cliPath: string, workspaceRoot: stri
 }
 
 // Exported test seam: get a bean by id with consistent error messages
-export async function getBeanById(backend: BackendInterface, beanId: string) {
+export async function getBeanById(
+  backend: BackendInterface,
+  beanId: string,
+  beans?: Awaited<ReturnType<BackendInterface['list']>>,
+) {
   try {
-    const beans = await backend.list();
-    const found = beans.find(b => b.id === beanId);
+    const allBeans = beans ?? (await backend.list());
+    const found = allBeans.find(b => b.id === beanId);
     if (!found) {
       throw new Error(`Bean not found: ${beanId}`);
     }
@@ -88,11 +95,141 @@ export async function getBeanById(backend: BackendInterface, beanId: string) {
   }
 }
 
+function collectDescendantBeans(beans: Array<{ id: string; parentId?: string; status: string }>, rootBeanId: string) {
+  const byParent = new Map<string, string[]>();
+  const byId = new Map(beans.map(bean => [bean.id, bean]));
+
+  for (const bean of beans) {
+    if (!bean.parentId) {
+      continue;
+    }
+    const children = byParent.get(bean.parentId) ?? [];
+    children.push(bean.id);
+    byParent.set(bean.parentId, children);
+  }
+
+  const queue = [...(byParent.get(rootBeanId) ?? [])];
+  const visited = new Set<string>();
+  const descendants: Array<{ id: string; parentId?: string; status: string }> = [];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (!currentId || visited.has(currentId)) {
+      continue;
+    }
+    visited.add(currentId);
+
+    const currentBean = byId.get(currentId);
+    if (!currentBean) {
+      continue;
+    }
+
+    descendants.push(currentBean);
+    const children = byParent.get(currentId);
+    if (children && children.length > 0) {
+      queue.push(...children);
+    }
+  }
+
+  return descendants;
+}
+
+async function cascadeStatusToDescendants(
+  backend: BackendInterface,
+  rootBeanId: string,
+  targetStatus: string,
+  options?: {
+    onlyCurrentStatuses?: Set<string>;
+    beans?: Array<{ id: string; parentId?: string; status: string }>;
+  },
+) {
+  const beans = options?.beans ?? (await backend.list());
+  const descendants = collectDescendantBeans(beans, rootBeanId);
+  const updatedBeanIds: string[] = [];
+  const skippedBeanIds: string[] = [];
+  const errors: Array<{ beanId: string; error: string }> = [];
+
+  const toUpdate: Array<{ id: string; parentId?: string; status: string }> = [];
+  for (const bean of descendants) {
+    if (options?.onlyCurrentStatuses && !options.onlyCurrentStatuses.has(bean.status)) {
+      skippedBeanIds.push(bean.id);
+      continue;
+    }
+
+    toUpdate.push(bean);
+  }
+
+  const settled = await Promise.allSettled(
+    toUpdate.map(async bean => backend.update(bean.id, { status: targetStatus })),
+  );
+
+  settled.forEach((result, index) => {
+    const bean = toUpdate[index];
+    if (!bean) {
+      return;
+    }
+
+    if (result.status === 'fulfilled') {
+      updatedBeanIds.push(bean.id);
+      return;
+    }
+
+    errors.push({
+      beanId: bean.id,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+  });
+
+  return {
+    totalDescendants: descendants.length,
+    updatedBeanIds,
+    skippedBeanIds,
+    errors,
+  };
+}
+
+function completeMarkdownTasks(body: string): { nextBody: string; totalTaskCount: number; updatedTaskCount: number } {
+  const lines = body.split(/\r?\n/);
+  let totalTaskCount = 0;
+  let updatedTaskCount = 0;
+
+  const taskLinePattern = /^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/;
+  const uncheckedTaskLinePattern = /^(\s*(?:[-*+]|\d+\.)\s+\[)\s(\].*)$/;
+
+  const nextLines = lines.map(line => {
+    if (!taskLinePattern.test(line)) {
+      return line;
+    }
+
+    totalTaskCount += 1;
+    const uncheckedMatch = uncheckedTaskLinePattern.exec(line);
+    if (!uncheckedMatch) {
+      return line;
+    }
+
+    updatedTaskCount += 1;
+    return `${uncheckedMatch[1]}x${uncheckedMatch[2]}`;
+  });
+
+  const nextBody = nextLines.join('\n');
+  return { nextBody, totalTaskCount, updatedTaskCount };
+}
+
 // Exported handler factories so unit tests can call handlers directly.
 export function initHandler(backend: BackendInterface) {
   return async ({ prefix }: { prefix?: string }) => {
     const result = await backend.init(prefix);
     return makeTextAndStructured(result);
+  };
+}
+
+export function archiveHandler(backend: BackendInterface) {
+  return async () => {
+    if (typeof backend.archive !== 'function') {
+      throw new TypeError('Archive is not supported by the current backend');
+    }
+
+    return makeTextAndStructured(await backend.archive());
   };
 }
 
@@ -153,7 +290,15 @@ export function createHandler(backend: BackendInterface) {
     body?: string;
     description?: string;
     parent?: string;
-  }) => makeTextAndStructured({ bean: await backend.create(input) });
+  }) => {
+    const bean = await backend.create(input);
+    const warnings = input.description !== undefined ? ['`description` is deprecated; use `body` instead.'] : undefined;
+
+    return makeTextAndStructured({
+      bean,
+      ...(warnings ? { warnings } : {}),
+    });
+  };
 }
 
 export function editHandler(backend: BackendInterface) {
@@ -182,13 +327,27 @@ export function reopenHandler(backend: BackendInterface) {
     requiredCurrentStatus: 'completed' | 'scrapped';
     targetStatus: string;
   }) => {
-    const bean = await getBeanById(backend, beanId);
-    if (bean.status !== requiredCurrentStatus) {
-      throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
+    const beans = await backend.list();
+    const bean = await getBeanById(backend, beanId, beans);
+    if (bean.status === requiredCurrentStatus) {
+      const updatedParentBean = await backend.update(beanId, { status: targetStatus });
+      const cascade = await cascadeStatusToDescendants(backend, beanId, targetStatus, {
+        onlyCurrentStatuses: CLOSED_STATUSES,
+        beans,
+      });
+
+      return makeTextAndStructured({
+        bean: updatedParentBean,
+        cascade: {
+          totalDescendants: cascade.totalDescendants,
+          updatedBeanIds: cascade.updatedBeanIds,
+          skippedBeanIds: cascade.skippedBeanIds,
+          errors: cascade.errors,
+        },
+      });
     }
-    return makeTextAndStructured({
-      bean: await backend.update(beanId, { status: targetStatus }),
-    });
+
+    throw new Error(`Bean ${beanId} is not ${requiredCurrentStatus}`);
   };
 }
 
@@ -206,22 +365,59 @@ export function updateHandler(backend: BackendInterface) {
     bodyAppend?: string;
     bodyReplace?: Array<{ old: string; new: string }>;
     ifMatch?: string;
-  }) =>
-    makeTextAndStructured({
-      bean: await backend.update(input.beanId, {
-        status: input.status,
-        type: input.type,
-        priority: input.priority,
-        parent: input.parent,
-        clearParent: input.clearParent,
-        blocking: input.blocking,
-        blockedBy: input.blockedBy,
-        body: input.body,
-        bodyAppend: input.bodyAppend,
-        bodyReplace: input.bodyReplace,
-        ifMatch: input.ifMatch,
-      }),
+  }) => {
+    const updatedBean = await backend.update(input.beanId, {
+      status: input.status,
+      type: input.type,
+      priority: input.priority,
+      parent: input.parent,
+      clearParent: input.clearParent,
+      blocking: input.blocking,
+      blockedBy: input.blockedBy,
+      body: input.body,
+      bodyAppend: input.bodyAppend,
+      bodyReplace: input.bodyReplace,
+      ifMatch: input.ifMatch,
     });
+
+    const closeStatus = input.status;
+    const shouldCascadeClose = Boolean(closeStatus && CLOSED_STATUSES.has(closeStatus));
+    const cascade = shouldCascadeClose
+      ? await cascadeStatusToDescendants(backend, input.beanId, closeStatus!, {
+          beans: await backend.list(),
+        })
+      : null;
+
+    return makeTextAndStructured({
+      bean: updatedBean,
+      ...(cascade
+        ? {
+            cascade: {
+              totalDescendants: cascade.totalDescendants,
+              updatedBeanIds: cascade.updatedBeanIds,
+              skippedBeanIds: cascade.skippedBeanIds,
+              errors: cascade.errors,
+            },
+          }
+        : {}),
+    });
+  };
+}
+
+export function completeTasksHandler(backend: BackendInterface) {
+  return async ({ beanId }: { beanId: string }) => {
+    const bean = await getBeanById(backend, beanId);
+    const { nextBody, totalTaskCount, updatedTaskCount } = completeMarkdownTasks(bean.body || '');
+
+    const updatedBean = updatedTaskCount > 0 ? await backend.update(beanId, { body: nextBody }) : bean;
+
+    return makeTextAndStructured({
+      bean: updatedBean,
+      totalTaskCount,
+      updatedTaskCount,
+      unchangedTaskCount: totalTaskCount - updatedTaskCount,
+    });
+  };
 }
 
 export function deleteHandler(backend: BackendInterface) {
@@ -293,11 +489,19 @@ export function bulkCreateHandler(backend: BackendInterface) {
     parent?: string;
   }) => {
     const results = await backend.bulkCreate(input.beans, input.parent);
+    const deprecatedDescriptionCount = input.beans.filter(bean => bean.description !== undefined).length;
     return makeTextAndStructured({
       results,
       requestedCount: input.beans.length,
       successCount: results.filter(r => r.bean).length,
       failedCount: results.filter(r => r.error).length,
+      ...(deprecatedDescriptionCount > 0
+        ? {
+            warnings: [
+              `Found ${deprecatedDescriptionCount} bean(s) using deprecated field \`description\`; use \`body\` instead.`,
+            ],
+          }
+        : {}),
     });
   };
 }
@@ -332,15 +536,28 @@ export function bulkUpdateHandler(backend: BackendInterface) {
 
 export function queryHandler(backend: BackendInterface) {
   return async (opts: {
-    operation: 'refresh' | 'filter' | 'search' | 'sort' | 'ready' | 'llm_context' | 'open_config';
+    operation: 'refresh' | 'filter' | 'search' | 'sort' | 'ready' | 'llm_context' | 'open_config' | 'graphql';
     mode?: 'status-priority-type-title' | 'updated' | 'created' | 'id';
     statuses?: string[] | null;
     types?: string[] | null;
     search?: string;
     includeClosed?: boolean;
     tags?: string[] | null;
+    graphql?: string;
+    variables?: Record<string, unknown>;
     writeToWorkspaceInstructions?: boolean;
-  }) => handleQueryOperation(backend, opts);
+  }) => {
+    if (opts.operation === 'graphql') {
+      if (typeof backend.queryGraphql !== 'function') {
+        throw new TypeError('GraphQL passthrough is not supported by the current backend');
+      }
+
+      const result = await backend.queryGraphql(opts.graphql || '', opts.variables);
+      return makeTextAndStructured({ data: result.data, errors: result.errors ?? [] });
+    }
+
+    return handleQueryOperation(backend, opts);
+  };
 }
 
 export function beanFileHandler(backend: BackendInterface) {
@@ -349,11 +566,24 @@ export function beanFileHandler(backend: BackendInterface) {
     path,
     content,
     overwrite,
+    fields,
   }: {
-    operation: 'read' | 'edit' | 'create' | 'delete';
+    operation: 'read' | 'edit' | 'create' | 'delete' | 'update_frontmatter';
     path: string;
     content?: string;
     overwrite?: boolean;
+    fields?: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    };
   }) => {
     if (operation === 'read') {
       return makeTextAndStructured(await backend.readBeanFile(path));
@@ -363,6 +593,9 @@ export function beanFileHandler(backend: BackendInterface) {
     }
     if (operation === 'create') {
       return makeTextAndStructured(await backend.createBeanFile(path, content || '', { overwrite }));
+    }
+    if (operation === 'update_frontmatter') {
+      return makeTextAndStructured(await backend.updateBeanFrontmatter(path, fields || {}));
     }
     if (operation === 'delete') {
       return makeTextAndStructured(await backend.deleteBeanFile(path));
@@ -404,6 +637,22 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
   );
 
   server.registerTool(
+    'beans_archive',
+    {
+      title: 'Archive Beans',
+      description: 'Archive completed or scrapped beans, equivalent to the beans CLI archive command.',
+      inputSchema: z.object({}),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    archiveHandler(backend),
+  );
+
+  server.registerTool(
     'beans_view',
     {
       title: 'View Bean',
@@ -414,7 +663,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
           beanIds: z.array(z.string().min(1).max(MAX_ID_LENGTH)).optional(),
         })
         .refine(input => Boolean(input.beanId) || (Array.isArray(input.beanIds) && input.beanIds.length > 0), {
-          message: 'Either beanId or beanIds must be provided',
+          message: `Either beanId or beanIds must be provided. ${BEAN_ID_HINT}`,
         }),
       annotations: {
         readOnlyHint: true,
@@ -455,16 +704,23 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'Edit Bean Metadata',
       description: 'Update bean metadata fields (status/type/priority/parent/blocking).',
-      inputSchema: z.object({
-        beanId: z.string().min(1).max(MAX_ID_LENGTH),
-        status: z.string().max(MAX_METADATA_LENGTH).optional(),
-        type: z.string().max(MAX_METADATA_LENGTH).optional(),
-        priority: z.string().max(MAX_METADATA_LENGTH).optional(),
-        parent: z.string().max(MAX_ID_LENGTH).optional(),
-        clearParent: z.boolean().optional(),
-        blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
-        blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
-      }),
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+          status: z.string().max(MAX_METADATA_LENGTH).optional(),
+          type: z.string().max(MAX_METADATA_LENGTH).optional(),
+          priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+          parent: z.string().max(MAX_ID_LENGTH).optional(),
+          clearParent: z.boolean().optional(),
+          blocking: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+          blockedBy: z.array(z.string().max(MAX_ID_LENGTH)).optional(),
+        })
+        .superRefine((input, ctx) => {
+          if (!input.beanId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['beanId'], message: BEAN_ID_HINT });
+          }
+        })
+        .transform(input => ({ ...input, beanId: input.beanId as string })),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -480,11 +736,18 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'Reopen Bean',
       description: 'Reopen a completed or scrapped bean into a non-closed status.',
-      inputSchema: z.object({
-        beanId: z.string().min(1).max(MAX_ID_LENGTH),
-        requiredCurrentStatus: z.enum(['completed', 'scrapped']),
-        targetStatus: z.string().max(MAX_METADATA_LENGTH).default('todo'),
-      }),
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+          requiredCurrentStatus: z.enum(['completed', 'scrapped']),
+          targetStatus: z.string().max(MAX_METADATA_LENGTH).default('todo'),
+        })
+        .superRefine((input, ctx) => {
+          if (!input.beanId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['beanId'], message: BEAN_ID_HINT });
+          }
+        })
+        .transform(input => ({ ...input, beanId: input.beanId as string })),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -503,7 +766,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         'Update bean metadata fields (status/type/priority/parent/blocking). Consolidated replacement for per-field update tools.',
       inputSchema: z
         .object({
-          beanId: z.string().min(1).max(MAX_ID_LENGTH),
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
           status: z.string().max(MAX_METADATA_LENGTH).optional(),
           type: z.string().max(MAX_METADATA_LENGTH).optional(),
           priority: z.string().max(MAX_METADATA_LENGTH).optional(),
@@ -523,12 +786,18 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
             .optional(),
           ifMatch: z.string().max(MAX_METADATA_LENGTH).optional(),
         })
+        .superRefine((input, ctx) => {
+          if (!input.beanId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['beanId'], message: BEAN_ID_HINT });
+          }
+        })
         .refine(
           input => !(input.body !== undefined && (input.bodyAppend !== undefined || input.bodyReplace !== undefined)),
           {
             message: 'body cannot be combined with bodyAppend/bodyReplace',
           },
-        ),
+        )
+        .transform(input => ({ ...input, beanId: input.beanId as string })),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -551,7 +820,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
           force: z.boolean().default(false),
         })
         .refine(input => Boolean(input.beanId) || (Array.isArray(input.beanIds) && input.beanIds.length > 0), {
-          message: 'Either beanId or beanIds must be provided',
+          message: `Either beanId or beanIds must be provided. ${BEAN_ID_HINT}`,
         }),
       annotations: {
         readOnlyHint: false,
@@ -598,7 +867,7 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
 
   const beanUpdateItemSchema = z
     .object({
-      beanId: z.string().min(1).max(MAX_ID_LENGTH),
+      beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
       status: z.string().max(MAX_METADATA_LENGTH).optional(),
       type: z.string().max(MAX_METADATA_LENGTH).optional(),
       priority: z.string().max(MAX_METADATA_LENGTH).optional(),
@@ -613,10 +882,16 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
         .optional(),
       ifMatch: z.string().max(MAX_METADATA_LENGTH).optional(),
     })
+    .superRefine((input, ctx) => {
+      if (!input.beanId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['beanId'], message: BEAN_ID_HINT });
+      }
+    })
     .refine(
       input => !(input.body !== undefined && (input.bodyAppend !== undefined || input.bodyReplace !== undefined)),
       { message: 'body cannot be combined with bodyAppend/bodyReplace' },
-    );
+    )
+    .transform(input => ({ ...input, beanId: input.beanId as string }));
 
   server.registerTool(
     'beans_bulk_update',
@@ -642,26 +917,63 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
   );
 
   server.registerTool(
+    'beans_complete_tasks',
+    {
+      title: 'Complete Markdown Tasks',
+      description: 'Mark all markdown checklist tasks within a bean as completed.',
+      inputSchema: z
+        .object({
+          beanId: z.string().min(1).max(MAX_ID_LENGTH).optional(),
+        })
+        .superRefine((input, ctx) => {
+          if (!input.beanId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['beanId'], message: BEAN_ID_HINT });
+          }
+        })
+        .transform(input => ({ ...input, beanId: input.beanId as string })),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    completeTasksHandler(backend),
+  );
+
+  server.registerTool(
     'beans_query',
     {
       title: 'Query Beans',
       description: 'Unified query tool for refresh, filter, search, and sort operations.',
-      inputSchema: z.object({
-        operation: z
-          .enum(['refresh', 'filter', 'search', 'sort', 'ready', 'llm_context', 'open_config'])
-          .default('refresh'),
-        mode: z.enum(['status-priority-type-title', 'updated', 'created', 'id']).optional(),
-        statuses: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
-        types: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
-        search: z.string().max(MAX_TITLE_LENGTH).optional(),
-        includeClosed: z.boolean().optional(),
-        tags: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
-        writeToWorkspaceInstructions: z.boolean().optional(),
-      }),
+      inputSchema: z
+        .object({
+          operation: z
+            .enum(['refresh', 'filter', 'search', 'sort', 'ready', 'llm_context', 'open_config', 'graphql'])
+            .default('refresh'),
+          mode: z.enum(['status-priority-type-title', 'updated', 'created', 'id']).optional(),
+          statuses: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+          types: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+          search: z.string().max(MAX_TITLE_LENGTH).optional(),
+          includeClosed: z.boolean().optional(),
+          tags: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+          graphql: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+          variables: z.record(z.string(), z.unknown()).optional(),
+          writeToWorkspaceInstructions: z.boolean().optional(),
+        })
+        .superRefine((input, ctx) => {
+          if (input.operation === 'graphql' && (!input.graphql || input.graphql.trim().length === 0)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['graphql'],
+              message: 'graphql query string is required when operation is graphql',
+            });
+          }
+        }),
       annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         destructiveHint: false,
-        idempotentHint: true,
+        idempotentHint: false,
         openWorldHint: false,
       },
     },
@@ -673,12 +985,39 @@ function registerTools(server: McpServer, backend: BackendInterface): void {
     {
       title: 'Bean File Operations',
       description: 'Read, create, edit, or delete files under .beans (operation param).',
-      inputSchema: z.object({
-        operation: z.enum(['read', 'edit', 'create', 'delete']),
-        path: z.string().min(1).max(MAX_PATH_LENGTH),
-        content: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
-        overwrite: z.boolean().optional(),
-      }),
+      inputSchema: z
+        .object({
+          operation: z.enum(['read', 'edit', 'create', 'delete', 'update_frontmatter']),
+          path: z.string().min(1).max(MAX_PATH_LENGTH),
+          content: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+          overwrite: z.boolean().optional(),
+          fields: z
+            .object({
+              title: z.string().max(MAX_TITLE_LENGTH).optional(),
+              status: z.string().max(MAX_METADATA_LENGTH).optional(),
+              type: z.string().max(MAX_METADATA_LENGTH).optional(),
+              priority: z.string().max(MAX_METADATA_LENGTH).optional(),
+              parent_id: z.string().max(MAX_ID_LENGTH).nullable().optional(),
+              tags: z.array(z.string().max(MAX_METADATA_LENGTH)).nullable().optional(),
+              blocking_ids: z.array(z.string().max(MAX_ID_LENGTH)).nullable().optional(),
+              blocked_by_ids: z.array(z.string().max(MAX_ID_LENGTH)).nullable().optional(),
+              pr: z.string().max(MAX_TITLE_LENGTH).nullable().optional(),
+              branch: z.string().max(MAX_TITLE_LENGTH).nullable().optional(),
+            })
+            .optional(),
+        })
+        .superRefine((input, ctx) => {
+          if (input.operation === 'update_frontmatter') {
+            const fieldCount = Object.values(input.fields || {}).filter(value => value !== undefined).length;
+            if (fieldCount === 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['fields'],
+                message: 'At least one frontmatter field update is required',
+              });
+            }
+          }
+        }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -724,6 +1063,18 @@ export class MutableBackend implements BackendInterface {
   init(prefix?: string) {
     return this.inner.init(prefix);
   }
+  archive() {
+    if (typeof this.inner.archive === 'function') {
+      return this.inner.archive();
+    }
+    throw new TypeError('Archive is not supported by backend');
+  }
+  queryGraphql(query: string, variables?: Record<string, unknown>) {
+    if (typeof this.inner.queryGraphql === 'function') {
+      return this.inner.queryGraphql(query, variables);
+    }
+    throw new TypeError('GraphQL passthrough is not supported by backend');
+  }
   list(opts?: Parameters<BackendInterface['list']>[0]) {
     return this.inner.list(opts);
   }
@@ -762,6 +1113,9 @@ export class MutableBackend implements BackendInterface {
   }
   editBeanFile(path: string, content: string) {
     return this.inner.editBeanFile(path, content);
+  }
+  updateBeanFrontmatter(path: string, updates: Parameters<BackendInterface['updateBeanFrontmatter']>[1]) {
+    return this.inner.updateBeanFrontmatter(path, updates);
   }
   createBeanFile(path: string, content: string, opts?: Parameters<BackendInterface['createBeanFile']>[2]) {
     return this.inner.createBeanFile(path, content, opts);
@@ -858,6 +1212,19 @@ export function parseCliArgs(argv: string[]): {
   let port = Number.isInteger(envPort) && envPort > 0 ? envPort : DEFAULT_MCP_PORT;
   let logDir: string | undefined;
 
+  const parseStrictPositiveInt = (raw: string, flagName: string): number => {
+    if (!/^\d+$/.test(raw)) {
+      throw new Error(`Invalid value for ${flagName}: ${raw}`);
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`Invalid value for ${flagName}: ${raw}`);
+    }
+
+    return parsed;
+  };
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if ((arg === '--workspace' || arg === '--workspace-root') && argv[i + 1]) {
@@ -871,10 +1238,7 @@ export function parseCliArgs(argv: string[]): {
       }
       i += 1;
     } else if (arg === '--port' && argv[i + 1]) {
-      const parsedPort = Number.parseInt(argv[i + 1]!, 10);
-      if (Number.isInteger(parsedPort) && parsedPort > 0) {
-        port = parsedPort;
-      }
+      port = parseStrictPositiveInt(argv[i + 1]!, '--port');
       i += 1;
     } else if (arg === '--log-dir' && argv[i + 1]) {
       logDir = argv[i + 1]!;

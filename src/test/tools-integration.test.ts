@@ -78,6 +78,12 @@ describe('Tool Handler Integration', () => {
       path,
       bytes: content.length,
     })),
+    updateBeanFrontmatter: vi.fn(async (path: string, updates: Record<string, unknown>) => ({
+      path,
+      bytes: JSON.stringify(updates).length,
+      updatedFields: Object.keys(updates),
+      frontmatter: updates,
+    })),
     createBeanFile: vi.fn(async (path: string, content: string) => ({
       path,
       bytes: content.length,

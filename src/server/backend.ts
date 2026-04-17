@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
@@ -16,6 +16,11 @@ const execFileAsync = promisify(execFile);
  */
 export interface BackendInterface {
   init(prefix?: string): Promise<Record<string, unknown>>;
+  archive?(): Promise<Record<string, unknown>>;
+  queryGraphql?(
+    query: string,
+    variables?: Record<string, unknown>,
+  ): Promise<{ data: unknown; errors?: GraphQLError[] }>;
   list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]>;
   create(input: {
     title: string;
@@ -80,6 +85,26 @@ export interface BackendInterface {
   readOutputLog(options?: { lines?: number }): Promise<{ path: string; content: string; linesReturned: number }>;
   readBeanFile(relativePath: string): Promise<{ path: string; content: string }>;
   editBeanFile(relativePath: string, content: string): Promise<{ path: string; bytes: number }>;
+  updateBeanFrontmatter(
+    relativePath: string,
+    updates: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    },
+  ): Promise<{
+    path: string;
+    bytes: number;
+    updatedFields: string[];
+    frontmatter: Record<string, string | string[]>;
+  }>;
   createBeanFile(
     relativePath: string,
     content: string,
@@ -209,6 +234,34 @@ export class BeansCliBackend implements BackendInterface {
     });
 
     return { initialized: true };
+  }
+
+  async archive(): Promise<Record<string, unknown>> {
+    const { stdout } = await execFileAsync(this.cliPath, ['archive', '--json'], {
+      cwd: this.workspaceRoot,
+      env: this.getSafeEnv(),
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30000,
+    });
+
+    this.invalidateCache();
+
+    if (!stdout.trim()) {
+      return { archived: true };
+    }
+
+    try {
+      return JSON.parse(stdout) as Record<string, unknown>;
+    } catch {
+      return { archived: true, output: stdout.trim() };
+    }
+  }
+
+  async queryGraphql(
+    query: string,
+    variables?: Record<string, unknown>,
+  ): Promise<{ data: unknown; errors?: GraphQLError[] }> {
+    return this.executeGraphQL<unknown>(query, variables);
   }
 
   async list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]> {
@@ -438,19 +491,20 @@ export class BeansCliBackend implements BackendInterface {
     }>,
     defaultParent?: string,
   ): Promise<Array<{ bean?: BeanRecord; error?: string }>> {
-    const results: Array<{ bean?: BeanRecord; error?: string }> = [];
-    for (const item of beans) {
-      try {
-        const bean = await this.create({
+    const settled = await Promise.allSettled(
+      beans.map(async item =>
+        this.create({
           ...item,
           parent: item.parent ?? defaultParent,
-        });
-        results.push({ bean });
-      } catch (error) {
-        results.push({ error: (error as Error).message });
-      }
-    }
-    return results;
+        }),
+      ),
+    );
+
+    return settled.map(result =>
+      result.status === 'fulfilled'
+        ? { bean: result.value }
+        : { error: result.reason instanceof Error ? result.reason.message : String(result.reason) },
+    );
   }
 
   async bulkUpdate(
@@ -470,17 +524,29 @@ export class BeansCliBackend implements BackendInterface {
     }>,
     defaultParent?: string,
   ): Promise<Array<{ beanId: string; bean?: BeanRecord; error?: string }>> {
-    const results: Array<{ beanId: string; bean?: BeanRecord; error?: string }> = [];
-    for (const { beanId, ...updates } of beans) {
-      try {
+    const settled = await Promise.allSettled(
+      beans.map(async ({ beanId, ...updates }) => {
         const resolvedParent = updates.parent ?? (updates.clearParent ? undefined : defaultParent);
         const bean = await this.update(beanId, { ...updates, parent: resolvedParent });
-        results.push({ beanId, bean });
-      } catch (error) {
-        results.push({ beanId, error: (error as Error).message });
+        return { beanId, bean };
+      }),
+    );
+
+    return settled.map((result, index) => {
+      const beanId = beans[index]?.beanId;
+      if (!beanId) {
+        return { beanId: 'unknown', error: 'Unknown bean id' };
       }
-    }
-    return results;
+
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+
+      return {
+        beanId,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      };
+    });
   }
 
   async openConfig(): Promise<{ configPath: string; content: string }> {
@@ -523,12 +589,20 @@ export class BeansCliBackend implements BackendInterface {
       process.env.BEANS_VSCODE_OUTPUT_LOG || join(this.workspaceRoot, '.vscode', 'logs', 'beans-output.log'),
     );
 
-    const isWithinWorkspace = isPathWithinRoot(this.workspaceRoot, outputPath);
+    const canonicalOutputPath = await realpath(outputPath).catch(() => outputPath);
+    const canonicalWorkspaceRoot = await realpath(this.workspaceRoot).catch(() => resolve(this.workspaceRoot));
+
+    const isWithinWorkspace = isPathWithinRoot(canonicalWorkspaceRoot, canonicalOutputPath);
     const vscodeLogDir =
       process.env.BEANS_VSCODE_LOG_DIR || this.logDir
         ? resolve(process.env.BEANS_VSCODE_LOG_DIR || this.logDir || '')
         : undefined;
-    const isWithinVscodeLogDir = vscodeLogDir ? isPathWithinRoot(vscodeLogDir, outputPath) : false;
+    const canonicalVscodeLogDir = vscodeLogDir
+      ? await realpath(vscodeLogDir).catch(() => resolve(vscodeLogDir))
+      : undefined;
+    const isWithinVscodeLogDir = canonicalVscodeLogDir
+      ? isPathWithinRoot(canonicalVscodeLogDir, canonicalOutputPath)
+      : false;
 
     if (!isWithinWorkspace && !isWithinVscodeLogDir) {
       throw new Error('Output log path must stay within the workspace or VS Code log directory');
@@ -625,6 +699,141 @@ export class BeansCliBackend implements BackendInterface {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
+  private shouldQuoteFrontmatterValue(value: string): boolean {
+    return !/^[A-Za-z0-9._-]+$/.test(value);
+  }
+
+  private parseFrontmatterLine(line: string): { key: string; rawValue: string } | null {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) {
+      return null;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    if (key.length === 0) {
+      return null;
+    }
+
+    for (const character of key) {
+      const isAlphaNumericUnderscore =
+        (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') ||
+        character === '_';
+
+      if (!isAlphaNumericUnderscore) {
+        return null;
+      }
+    }
+
+    const rawValue = line.slice(separatorIndex + 1).trimStart();
+    return { key, rawValue };
+  }
+
+  private buildFrontmatterIndex(frontmatterLines: string[]): Map<string, number> {
+    const indexByKey = new Map<string, number>();
+
+    frontmatterLines.forEach((line, index) => {
+      const parsed = this.parseFrontmatterLine(line);
+      if (!parsed) {
+        return;
+      }
+      indexByKey.set(parsed.key, index);
+    });
+
+    return indexByKey;
+  }
+
+  private serializeFrontmatterValue(key: string, value: string | string[]): string {
+    if (Array.isArray(value)) {
+      return JSON.stringify(value);
+    }
+
+    if (key === 'title') {
+      return this.normalizeFrontmatterTitleValue(value);
+    }
+
+    if (this.shouldQuoteFrontmatterValue(value)) {
+      return `"${this.escapeForYamlDoubleQuoted(value)}"`;
+    }
+
+    return value;
+  }
+
+  private deserializeFrontmatterValue(value: string): string | string[] {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+          return parsed;
+        }
+      } catch {
+        // Fall through and return raw text.
+      }
+    }
+
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1).replaceAll('\\"', '"').replaceAll('\\\\', '\\').replaceAll("''", "'");
+    }
+
+    return trimmed;
+  }
+
+  private splitFrontmatterDocument(content: string): {
+    eol: string;
+    hasFrontmatter: boolean;
+    frontmatterLines: string[];
+    body: string;
+  } {
+    const crlfOpen = content.startsWith('---\r\n');
+    const lfOpen = content.startsWith('---\n');
+    const eol = crlfOpen ? '\r\n' : '\n';
+
+    if (!crlfOpen && !lfOpen) {
+      return { eol: '\n', hasFrontmatter: false, frontmatterLines: [], body: content };
+    }
+
+    const openEnd = `---${eol}`.length;
+    const closeMarker = `${eol}---`;
+    const closeIdx = content.indexOf(closeMarker, openEnd);
+
+    if (closeIdx === -1) {
+      return { eol, hasFrontmatter: false, frontmatterLines: [], body: content };
+    }
+
+    const frontmatter = content.slice(openEnd, closeIdx);
+    const body = content.slice(closeIdx + closeMarker.length);
+    return {
+      eol,
+      hasFrontmatter: true,
+      frontmatterLines: frontmatter.length > 0 ? frontmatter.split(eol) : [],
+      body,
+    };
+  }
+
+  private parseFrontmatterFields(frontmatterLines: string[]): Record<string, string | string[]> {
+    const fields: Record<string, string | string[]> = {};
+
+    for (const line of frontmatterLines) {
+      const parsed = this.parseFrontmatterLine(line);
+      if (!parsed) {
+        continue;
+      }
+
+      const { valuePart } = this.splitYamlInlineComment(parsed.rawValue);
+      fields[parsed.key] = this.deserializeFrontmatterValue(valuePart);
+    }
+
+    return fields;
+  }
+
+  private async writeFileAtomically(absolutePath: string, content: string): Promise<void> {
+    const tempPath = `${absolutePath}.tmp-${process.pid}-${Date.now()}`;
+    await writeFile(tempPath, content, 'utf8');
+    await rename(tempPath, absolutePath);
+  }
+
   /**
    * Normalise a raw YAML title value to a double-quoted scalar.
    * Handles: empty, already double-quoted, single-quoted (unescaping `''`),
@@ -717,6 +926,82 @@ export class BeansCliBackend implements BackendInterface {
     return { path: absolutePath, bytes: Buffer.byteLength(fixed, 'utf8') };
   }
 
+  async updateBeanFrontmatter(
+    relativePath: string,
+    updates: {
+      title?: string;
+      status?: string;
+      type?: string;
+      priority?: string;
+      parent_id?: string | null;
+      tags?: string[] | null;
+      blocking_ids?: string[] | null;
+      blocked_by_ids?: string[] | null;
+      pr?: string | null;
+      branch?: string | null;
+    },
+  ): Promise<{
+    path: string;
+    bytes: number;
+    updatedFields: string[];
+    frontmatter: Record<string, string | string[]>;
+  }> {
+    const absolutePath = this.resolveBeanFilePath(relativePath);
+    const content = await readFile(absolutePath, 'utf8');
+    const { eol, hasFrontmatter, frontmatterLines, body } = this.splitFrontmatterDocument(content);
+    const updatedFields = Object.entries(updates)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key);
+
+    if (updatedFields.length === 0) {
+      throw new Error('At least one frontmatter field update is required');
+    }
+
+    const nextLines = [...frontmatterLines];
+    let indexByKey = this.buildFrontmatterIndex(nextLines);
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined) {
+        continue;
+      }
+
+      const existingIndex = indexByKey.get(key);
+      if (value === null) {
+        if (existingIndex !== undefined) {
+          nextLines.splice(existingIndex, 1);
+          indexByKey = this.buildFrontmatterIndex(nextLines);
+        }
+        continue;
+      }
+
+      const serialized = `${key}: ${this.serializeFrontmatterValue(key, value)}`;
+      if (existingIndex !== undefined) {
+        const existingLine = nextLines[existingIndex] ?? '';
+        const existingParsed = this.parseFrontmatterLine(existingLine);
+        const commentPart = existingParsed ? this.splitYamlInlineComment(existingParsed.rawValue).commentPart : '';
+        nextLines[existingIndex] = `${serialized}${commentPart}`;
+      } else {
+        nextLines.push(serialized);
+        indexByKey.set(key, nextLines.length - 1);
+      }
+    }
+
+    const frontmatterBlock = nextLines.length > 0 ? nextLines.join(eol) : '';
+    const nextContent = hasFrontmatter
+      ? `---${eol}${frontmatterBlock}${eol}---${body}`
+      : `---${eol}${frontmatterBlock}${eol}---${eol}${body}`;
+    const fixed = this.quoteFrontmatterTitles(nextContent);
+
+    await this.writeFileAtomically(absolutePath, fixed);
+
+    return {
+      path: absolutePath,
+      bytes: Buffer.byteLength(fixed, 'utf8'),
+      updatedFields,
+      frontmatter: this.parseFrontmatterFields(this.splitFrontmatterDocument(fixed).frontmatterLines),
+    };
+  }
+
   async createBeanFile(
     relativePath: string,
     content: string,
@@ -726,10 +1011,18 @@ export class BeansCliBackend implements BackendInterface {
     const fixed = this.quoteFrontmatterTitles(content);
     await mkdir(dirname(absolutePath), { recursive: true });
 
-    await writeFile(absolutePath, fixed, {
-      encoding: 'utf8',
-      flag: options?.overwrite ? 'w' : 'wx',
-    });
+    try {
+      await writeFile(absolutePath, fixed, {
+        encoding: 'utf8',
+        flag: options?.overwrite ? 'w' : 'wx',
+      });
+    } catch (error) {
+      const maybeNodeError = error as NodeJS.ErrnoException;
+      if (maybeNodeError.code === 'EEXIST' && !options?.overwrite) {
+        throw new Error('Bean file already exists. Pass overwrite=true to replace it.');
+      }
+      throw error;
+    }
 
     return {
       path: absolutePath,
