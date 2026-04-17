@@ -46,6 +46,8 @@ const BEAN: BeanRecord = {
 function makeBackend(overrides: Partial<BackendInterface> = {}): BackendInterface {
   return {
     init: vi.fn(async () => ({ initialized: true })),
+    archive: vi.fn(async () => ({ archived: true, archivedCount: 1 })),
+    queryGraphql: vi.fn(async () => ({ data: { beans: [{ id: BEAN.id }] }, errors: [] })),
     list: vi.fn(async () => [BEAN]),
     create: vi.fn(async input => ({ ...BEAN, id: 'new-bean', title: input.title, type: input.type })),
     update: vi.fn(async (id, updates) => ({ ...BEAN, id, ...updates })),
@@ -117,11 +119,13 @@ describe('tool registration', () => {
       const names = tools.map(t => t.name);
 
       expect(names).toContain('beans_init');
+      expect(names).toContain('beans_archive');
       expect(names).toContain('beans_view');
       expect(names).toContain('beans_create');
       expect(names).toContain('beans_edit');
       expect(names).toContain('beans_update');
       expect(names).toContain('beans_reopen');
+      expect(names).toContain('beans_complete_tasks');
       expect(names).toContain('beans_delete');
       expect(names).toContain('beans_query');
       expect(names).toContain('beans_bean_file');
@@ -189,6 +193,26 @@ describe('beans_init', () => {
     const { client, cleanup } = await bootClient(makeBackend());
     try {
       await expectError(client.callTool({ name: 'beans_init', arguments: { prefix: 'x'.repeat(33) } }));
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// beans_archive
+// ---------------------------------------------------------------------------
+
+describe('beans_archive', () => {
+  it('archives completed/scrapped beans via backend', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({ name: 'beans_archive', arguments: {} });
+      const data = parseResult(result) as { archived: boolean; archivedCount: number };
+      expect(data.archived).toBe(true);
+      expect(data.archivedCount).toBe(1);
+      expect(backend.archive).toHaveBeenCalledTimes(1);
     } finally {
       await cleanup();
     }
@@ -371,7 +395,34 @@ describe('beans_update', () => {
   it('rejects missing beanId', async () => {
     const { client, cleanup } = await bootClient(makeBackend());
     try {
-      await expectError(client.callTool({ name: 'beans_update', arguments: { status: 'todo' } }));
+      const result = await client.callTool({ name: 'beans_update', arguments: { status: 'todo' } });
+      expect(result.isError).toBe(true);
+      const items = result.content as TextContent[];
+      expect(items[0].text).toContain('beanId');
+      expect(items[0].text).toContain('Did you mean `beanId`?');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('cascades close status to descendants', async () => {
+    const beans = [
+      { ...BEAN, id: 'bean-1', status: 'todo' },
+      { ...BEAN, id: 'child-1', parentId: 'bean-1', status: 'todo' },
+      { ...BEAN, id: 'child-2', parentId: 'bean-1', status: 'in-progress' },
+    ];
+    const backend = makeBackend({ list: vi.fn(async () => beans) });
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_update',
+        arguments: { beanId: 'bean-1', status: 'completed' },
+      });
+
+      const data = parseResult(result) as { cascade: { updatedBeanIds: string[] } };
+      expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+      expect(backend.update).toHaveBeenCalledWith('child-1', { status: 'completed' });
+      expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'completed' });
     } finally {
       await cleanup();
     }
@@ -472,7 +523,8 @@ describe('beans_edit', () => {
 describe('beans_reopen', () => {
   it('reopens a completed bean to todo', async () => {
     const completedBean = { ...BEAN, status: 'completed' };
-    const backend = makeBackend({ list: vi.fn(async () => [completedBean]) });
+    const childBean = { ...BEAN, id: 'child-1', parentId: 'bean-1', status: 'completed' };
+    const backend = makeBackend({ list: vi.fn(async () => [completedBean, childBean]) });
     const { client, cleanup } = await bootClient(backend);
     try {
       const result = await client.callTool({
@@ -481,6 +533,7 @@ describe('beans_reopen', () => {
       });
       expect(result.isError).toBeFalsy();
       expect(backend.update).toHaveBeenCalledWith('bean-1', { status: 'todo' });
+      expect(backend.update).toHaveBeenCalledWith('child-1', { status: 'todo' });
     } finally {
       await cleanup();
     }
@@ -743,6 +796,31 @@ describe('beans_query', () => {
       await cleanup();
     }
   });
+
+  it('graphql operation proxies raw GraphQL to backend.queryGraphql', async () => {
+    const backend = makeBackend();
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_query',
+        arguments: { operation: 'graphql', graphql: '{ beans { id } }', variables: { limit: 1 } },
+      });
+      const data = parseResult(result) as { data: { beans: Array<{ id: string }> } };
+      expect(data.data.beans[0]?.id).toBe('bean-1');
+      expect(backend.queryGraphql).toHaveBeenCalledWith('{ beans { id } }', { limit: 1 });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('graphql operation requires graphql string', async () => {
+    const { client, cleanup } = await bootClient(makeBackend());
+    try {
+      await expectError(client.callTool({ name: 'beans_query', arguments: { operation: 'graphql' } }));
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -888,6 +966,51 @@ describe('beans_output', () => {
     try {
       const result = await client.callTool({ name: 'beans_output', arguments: {} });
       expect(result.isError).toBeFalsy();
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// beans_complete_tasks
+// ---------------------------------------------------------------------------
+
+describe('beans_complete_tasks', () => {
+  it('marks markdown tasks complete in bean body', async () => {
+    const beanWithTasks = {
+      ...BEAN,
+      body: '- [ ] A\n- [x] B\n1. [ ] C',
+    };
+    const backend = makeBackend({ list: vi.fn(async () => [beanWithTasks]) });
+    const { client, cleanup } = await bootClient(backend);
+    try {
+      const result = await client.callTool({
+        name: 'beans_complete_tasks',
+        arguments: { beanId: 'bean-1' },
+      });
+
+      const data = parseResult(result) as { updatedTaskCount: number; totalTaskCount: number };
+      expect(data.updatedTaskCount).toBe(2);
+      expect(data.totalTaskCount).toBe(3);
+      expect(backend.update).toHaveBeenCalledWith('bean-1', {
+        body: '- [x] A\n- [x] B\n1. [x] C',
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('returns beanId hint when beanId is missing', async () => {
+    const { client, cleanup } = await bootClient(makeBackend());
+    try {
+      const result = await client.callTool({
+        name: 'beans_complete_tasks',
+        arguments: { id: 'bean-1' },
+      });
+      expect(result.isError).toBe(true);
+      const items = result.content as TextContent[];
+      expect(items[0].text).toContain('Did you mean `beanId`?');
     } finally {
       await cleanup();
     }

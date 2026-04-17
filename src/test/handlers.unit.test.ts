@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  archiveHandler,
   beanFileHandler,
+  completeTasksHandler,
   createHandler,
   deleteHandler,
   editHandler,
@@ -78,6 +80,15 @@ describe('Handlers (unit)', () => {
     expect(backend.init).toHaveBeenCalledWith('pfx');
     const data = JSON.parse(res.content?.[0]?.text ?? '{}');
     expect(data).toBeDefined();
+  });
+
+  it('archiveHandler delegates to backend.archive', async () => {
+    const backend = makeBackend({ archive: vi.fn(async () => ({ archived: true, archivedCount: 2 })) });
+    const res = await archiveHandler(backend)({} as never);
+    expect(backend.archive).toHaveBeenCalled();
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.archived).toBe(true);
+    expect(data.archivedCount).toBe(2);
   });
 
   it('viewHandler returns bean structured content', async () => {
@@ -170,6 +181,85 @@ describe('Handlers (unit)', () => {
     expect(data.bean.status).toBe('todo');
   });
 
+  it('reopenHandler cascades reopen to closed descendants', async () => {
+    const backend = makeBackend({
+      list: vi.fn(async () => [
+        { ...sampleBean, id: 'parent', status: 'completed' },
+        { ...sampleBean, id: 'child-1', parentId: 'parent', status: 'completed' },
+        { ...sampleBean, id: 'child-2', parentId: 'parent', status: 'scrapped' },
+        { ...sampleBean, id: 'child-3', parentId: 'parent', status: 'todo' },
+      ]),
+      update: vi.fn(async (id: string, updates: any) => ({
+        ...sampleBean,
+        id,
+        ...updates,
+      })),
+    });
+
+    const res = await reopenHandler(backend)({
+      beanId: 'parent',
+      requiredCurrentStatus: 'completed',
+      targetStatus: 'todo',
+    });
+
+    expect(backend.update).toHaveBeenCalledWith('parent', { status: 'todo' });
+    expect(backend.update).toHaveBeenCalledWith('child-1', { status: 'todo' });
+    expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'todo' });
+
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+    expect(data.cascade.skippedBeanIds).toEqual(['child-3']);
+  });
+
+  it('updateHandler cascades close status to descendants', async () => {
+    const backend = makeBackend({
+      list: vi.fn(async () => [
+        { ...sampleBean, id: 'parent', status: 'todo' },
+        { ...sampleBean, id: 'child-1', parentId: 'parent', status: 'todo' },
+        { ...sampleBean, id: 'child-2', parentId: 'parent', status: 'in-progress' },
+      ]),
+      update: vi.fn(async (id: string, updates: any) => ({
+        ...sampleBean,
+        id,
+        ...updates,
+      })),
+    });
+
+    const res = await updateHandler(backend)({ beanId: 'parent', status: 'completed' } as any);
+    expect(backend.update).toHaveBeenCalledWith('parent', expect.objectContaining({ status: 'completed' }));
+    expect(backend.update).toHaveBeenCalledWith('child-1', { status: 'completed' });
+    expect(backend.update).toHaveBeenCalledWith('child-2', { status: 'completed' });
+
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.cascade.updatedBeanIds.sort()).toEqual(['child-1', 'child-2'].sort());
+  });
+
+  it('completeTasksHandler marks markdown tasks complete', async () => {
+    const backend = makeBackend({
+      list: vi.fn(async () => [
+        {
+          ...sampleBean,
+          id: 'b1',
+          body: '- [ ] Task 1\n- [x] Task 2\n1. [ ] Task 3',
+        },
+      ]),
+      update: vi.fn(async (id: string, updates: any) => ({
+        ...sampleBean,
+        id,
+        ...updates,
+      })),
+    });
+
+    const res = await completeTasksHandler(backend)({ beanId: 'b1' });
+    expect(backend.update).toHaveBeenCalledWith('b1', {
+      body: '- [x] Task 1\n- [x] Task 2\n1. [x] Task 3',
+    });
+
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.totalTaskCount).toBe(3);
+    expect(data.updatedTaskCount).toBe(2);
+  });
+
   it('deleteHandler enforces draft/scrapped unless force', async () => {
     const backend = makeBackend();
     await expect(deleteHandler(backend)({ beanId: 'b1', force: false })).rejects.toThrow(
@@ -237,5 +327,24 @@ describe('Handlers (unit)', () => {
     const res = await queryHandler(backend)({ operation: 'refresh' });
     // handleQueryOperation returns value directly; ensure promise resolves
     expect(res).toBeDefined();
+  });
+
+  it('queryHandler supports graphql passthrough operation', async () => {
+    const backend = makeBackend({
+      queryGraphql: vi.fn(async (_query: string, _variables: any) => ({
+        data: { beans: [{ id: 'b1' }] },
+        errors: [],
+      })),
+    });
+
+    const res = await queryHandler(backend)({
+      operation: 'graphql',
+      graphql: '{ beans { id } }',
+      variables: { limit: 1 },
+    });
+
+    expect(backend.queryGraphql).toHaveBeenCalledWith('{ beans { id } }', { limit: 1 });
+    const data = JSON.parse(res.content?.[0]?.text ?? '{}');
+    expect(data.data.beans[0].id).toBe('b1');
   });
 });

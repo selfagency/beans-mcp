@@ -16,6 +16,11 @@ const execFileAsync = promisify(execFile);
  */
 export interface BackendInterface {
   init(prefix?: string): Promise<Record<string, unknown>>;
+  archive?(): Promise<Record<string, unknown>>;
+  queryGraphql?(
+    query: string,
+    variables?: Record<string, unknown>,
+  ): Promise<{ data: unknown; errors?: GraphQLError[] }>;
   list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]>;
   create(input: {
     title: string;
@@ -209,6 +214,34 @@ export class BeansCliBackend implements BackendInterface {
     });
 
     return { initialized: true };
+  }
+
+  async archive(): Promise<Record<string, unknown>> {
+    const { stdout } = await execFileAsync(this.cliPath, ['archive', '--json'], {
+      cwd: this.workspaceRoot,
+      env: this.getSafeEnv(),
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30000,
+    });
+
+    this.invalidateCache();
+
+    if (!stdout.trim()) {
+      return { archived: true };
+    }
+
+    try {
+      return JSON.parse(stdout) as Record<string, unknown>;
+    } catch {
+      return { archived: true, output: stdout.trim() };
+    }
+  }
+
+  async queryGraphql(
+    query: string,
+    variables?: Record<string, unknown>,
+  ): Promise<{ data: unknown; errors?: GraphQLError[] }> {
+    return this.executeGraphQL<unknown>(query, variables);
   }
 
   async list(options?: { status?: string[]; type?: string[]; search?: string }): Promise<BeanRecord[]> {

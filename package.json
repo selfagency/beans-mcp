@@ -28,6 +28,12 @@
     "beans-mcp": "dist/beans-mcp-server.cjs"
   },
   "type": "module",
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE.txt"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
