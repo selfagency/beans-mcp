@@ -532,25 +532,35 @@ async function main() {
   console.log(`🚀 Publishing ${tag} to npm (dist-tag: ${distTag})...`);
   $.verbose = true;
   const otpItemId = resolveOtpItemId(process.env);
+  const envOtp = (process.env.NPM_PUBLISH_OTP || process.env.NPM_OTP || '').trim();
   // For scoped public packages, --access public is required on first publish; harmless on subsequent publishes.
   const accessFlag = (JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).name || '').startsWith('@')
     ? ['--access', 'public']
     : [];
   try {
-    if (!otpItemId) {
-      throw new Error(
-        'Set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) before running the release script',
-      );
-    }
-    const otp = (await $`op item get ${otpItemId} --otp`).stdout.trim();
-    if (!otp) {
-      throw new Error(`Failed to retrieve npm OTP from 1Password item ${otpItemId}`);
+    let otp = envOtp;
+    if (!otp && otpItemId) {
+      otp = (await $`op item get ${otpItemId} --otp`).stdout.trim();
+      if (!otp) {
+        throw new Error(`Failed to retrieve npm OTP from 1Password item ${otpItemId}`);
+      }
     }
 
     // Re-verify auth right before publish using the exact same env/config path,
     // so npm publish never falls back to interactive login behavior.
     await $({ env: selectedNpmEnv })`npm whoami --userconfig=${npmUserConfigPath} --registry=${NPM_REGISTRY}`;
-    await $({ env: selectedNpmEnv })`npm publish ./dist --userconfig=${npmUserConfigPath} --tag ${distTag} --registry=${NPM_REGISTRY} ${accessFlag} --otp=${otp}`;
+
+    const publishArgs = [
+      'publish',
+      './dist',
+      `--userconfig=${npmUserConfigPath}`,
+      '--tag',
+      distTag,
+      `--registry=${NPM_REGISTRY}`,
+      ...accessFlag,
+      ...(otp ? [`--otp=${otp}`] : []),
+    ];
+    await $({ env: selectedNpmEnv })`npm ${publishArgs}`;
     $.verbose = false;
     releaseDone = true;
     console.log(`✅ Published ${tag} to npm.`);
@@ -561,6 +571,8 @@ async function main() {
       console.error('❌ npm publish requested an OTP even though token auth was configured.');
       console.error('   npm now requires a granular write token with Bypass 2FA enabled for OTP-less publishes.');
       console.error('   Update the token on your npm account, then retry the release.');
+      console.error('   If your account still requires OTP, set NPM_PUBLISH_OTP or NPM_OTP.');
+      console.error('   Optional: set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) for automatic OTP retrieval.');
     }
     throw err;
   } finally {
