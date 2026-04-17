@@ -1,6 +1,6 @@
 ---
 name: beans-mcp
-description: Interact with the Beans CLI issue tracker using beans-mcp tools. Use when creating, viewing, editing, querying, or bulk-managing beans, including file operations and frontmatter-safe updates.
+description: Use this skill when the user needs to manage Beans work items in a Beans workspace—create, view, update, reopen, archive, query, or bulk-manage beans, edit `.beans` files/frontmatter, or manage parent/blocking relationships. Use it even when the user says tickets/issues/backlog instead of “beans.” Do not use it for generic GitHub issue workflows that are not backed by Beans.
 ---
 
 # Beans MCP Skill
@@ -14,6 +14,11 @@ Use this skill whenever you need to:
 - Bulk-create or bulk-assign beans to a parent
 - Read or write bean markdown files under `.beans/`
 - Generate Copilot workspace instructions from the live Beans context
+
+Do **not** use this skill for:
+
+- Generic GitHub Issues/Projects workflows unrelated to a Beans workspace
+- One-off markdown editing outside `.beans/` records
 
 ---
 
@@ -35,6 +40,20 @@ Use this skill whenever you need to:
 | `beans_query`          | Query/list/filter/sort/ready/graphql operations |
 | `beans_bean_file`      | Read/create/edit/delete `.beans` files          |
 | `beans_output`         | Read extension output logs                      |
+
+---
+
+## Default Workflow (Use This First)
+
+When the user asks for bean work and intent is unclear, default to this sequence:
+
+1. **Discover**: `beans_query` with `operation: "ready"` (or `refresh` if broad list needed)
+2. **Inspect**: `beans_view` for the specific bean(s)
+3. **Mutate**: `beans_update` (or bulk variants) with minimal required changes
+4. **Body tasks**: `beans_complete_tasks` for checklist completion
+5. **Close/archive**: `beans_update` to `completed`/`scrapped`, then `beans_archive` when appropriate
+
+Use alternatives only when this default is insufficient.
 
 ---
 
@@ -110,6 +129,14 @@ With variables:
 - Use `beans_bulk_create` / `beans_bulk_update` for batch parent/relationship updates.
 - Use `beans_complete_tasks` for markdown checklist completion inside a bean body.
 - Use `beans_archive` only after work is completed/scrapped and user intent is to archive.
+
+### Gotchas (High-Value Corrections)
+
+- `beans_update` rejects combining `body` with `bodyAppend`/`bodyReplace` in one request.
+- `beans_delete` allows only `draft`/`scrapped` unless `force: true`.
+- `beans_reopen` requires the current status to match `requiredCurrentStatus` (`completed` or `scrapped`).
+- Omitting `beanId` produces a validation hint; prefer `beanId` (not `id`).
+- For concurrent edits, pass `ifMatch` with the current bean `etag` from `beans_view`.
 
 ### Relationship semantics
 
@@ -227,6 +254,11 @@ Writes to `.github/instructions/beans-prime.instructions.md` when `writeToWorksp
 - Both `foo.md` and `.beans/foo.md` are accepted; the leading `.beans/` is stripped.
 - Use `update_frontmatter` to atomically update frontmatter fields without rewriting the body.
 
+### `update_frontmatter` defaults
+
+- Prefer `update_frontmatter` over `edit` when changing only metadata fields.
+- Set nullable fields (`parent_id`, `tags`, `blocking_ids`, `blocked_by_ids`, `pr`, `branch`) to `null` to remove them.
+
 ```json
 { "operation": "read", "path": "task-abc--fix-login.md" }
 ```
@@ -324,3 +356,35 @@ Filtered queries (status/type/search) are **never cached** and always hit the CL
   "parent": "epic-new-parent"
 }
 ```
+
+---
+
+## Trigger Guidance (Description Optimization)
+
+This skill should trigger for prompts like:
+
+- “Can you update this backlog item and link it to its blocker?”
+- “Move these tasks under an epic and mark one in-progress.”
+- “Edit the bean frontmatter and set PR/branch metadata.”
+
+This skill should **not** trigger for prompts like:
+
+- “Open a GitHub issue in repo X” (without Beans workspace context)
+- “Update Jira ticket ABC-123” (external tracker)
+
+---
+
+## Evaluation Starter (Output Quality + Triggering)
+
+Use `evals/evals.json` as the canonical test set and iterate in `iteration-N/` workspace folders.
+
+- Start with 2–3 realistic prompts, then expand.
+- Include both should-trigger and should-not-trigger cases.
+- Add assertions after first outputs to avoid brittle checks.
+
+Use this file layout:
+
+- `evals/evals.json`
+- optional fixtures under `evals/files/`
+
+If you add scripts later, keep them non-interactive, expose `--help`, and emit structured output (JSON) on stdout.
