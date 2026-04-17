@@ -46,6 +46,9 @@
   },
   "scripts": {
     "build": "tsup",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "format": "oxfmt",
     "lint:fix": "oxlint --fix",
     "lint": "oxlint",
@@ -71,6 +74,7 @@
     "oxlint-tsgolint": "^0.20.0",
     "tsup": "8.5.1",
     "typescript": "6.0.2",
+    "vitepress": "^1.6.4",
     "vitest": "4.1.2",
     "zod": "4.3.6",
     "zx": "^8.8.5"
