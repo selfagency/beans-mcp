@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-17
+
+## What's Changed
+* chore(deps): bump vite from 8.0.3 to 8.0.5 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/7
+* chore(deps-dev): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/8
+* fix: harden CLI parsing and backend safety by @selfagency in https://github.com/selfagency/beans-mcp/pull/10
+
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.5.0...v0.6.0
+
+_Source: changes from v0.5.0 to v0.6.0._
+
+
 ## [0.5.2] - 2026-04-06
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.5.1...v0.5.2
