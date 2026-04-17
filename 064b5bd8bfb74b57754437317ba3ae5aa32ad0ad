@@ -1,0 +1,36 @@
+skills/beans-mcp/SKILL.md
+  h_5cf1e2c1161853 228,255-266,273
+src/test/BeansMcpServer.test.ts
+  71be9e87e5972040 585-592
+  h_5cf1e2c1161853 184-189,430-437,593
+src/test/tools-integration.test.ts
+  h_5cf1e2c1161853 81-86
+src/test/startBeansMcpServer.test.ts
+  h_5cf1e2c1161853 53-58
+src/server/backend.ts
+  71be9e87e5972040 772-773
+  h_5cf1e2c1161853 3,88-107,681-771,866-949
+README.md
+  h_5cf1e2c1161853 59,428-453
+src/test/handlers.unit.test.ts
+  h_5cf1e2c1161853 55-60,308-313
+src/server/BeansMcpServer.ts
+  h_5cf1e2c1161853 522,524,528-539,550-552,943,946-972,1067-1068
+package.json
+  h_5cf1e2c1161853 64-66,70-72,74-75
+src/test/backend.frontmatter.test.ts
+  h_5cf1e2c1161853 1-66
+src/test/protocol.e2e.test.ts
+  h_5cf1e2c1161853 62-67,901-919,930-942
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "064b5bd8bfb74b57754437317ba3ae5aa32ad0ad",
+  "prompts": {},
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}
