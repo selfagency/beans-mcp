@@ -1,6 +1,6 @@
 # @selfagency/beans-mcp 🫘
 
-![beans-mcp icon](docs/assets/icon.svg)
+<img src="docs/assets/icon.png" alt="beans-mcp icon" width="300" />
 
 [![Test & Build](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml) [![codecov](https://codecov.io/gh/selfagency/beans-mcp/graph/badge.svg?token=udeAJyu8Nu)](https://codecov.io/gh/selfagency/beans-mcp)
 
