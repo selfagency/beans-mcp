@@ -90,8 +90,13 @@ describe('createDistPackage', () => {
 });
 
 describe('release state helpers', () => {
-  it('includes server.json in release metadata files', () => {
-    expect(getReleaseMetadataFiles()).toEqual(['package.json', 'server.json', 'CHANGELOG.md']);
+  it('includes docs server descriptors in release metadata files', () => {
+    expect(getReleaseMetadataFiles()).toEqual([
+      'package.json',
+      'docs/public/server.json',
+      'docs/public/.well-known/mcp/server-card.json',
+      'CHANGELOG.md',
+    ]);
   });
 
   it('has no built-in 1Password item default', () => {
