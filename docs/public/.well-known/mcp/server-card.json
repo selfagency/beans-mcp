@@ -2,7 +2,7 @@
   "serverInfo": {
     "name": "io.github.selfagency/beans-mcp",
     "title": "beans-mcp",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "Interact with the Beans CLI issue tracker agentically"
   },
   "documentationUrl": "https://beans-mcp.self.agency/guide/getting-started",
@@ -16,7 +16,7 @@
       "package": {
         "registryType": "npm",
         "identifier": "@selfagency/beans-mcp",
-        "version": "0.5.0"
+        "version": "0.6.0"
       }
     }
   ],
