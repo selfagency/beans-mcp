@@ -7,26 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Startup compatibility checks now compare the installed `beans` CLI version
+  against the hardcoded supported Beans version (`0.4.2`) instead of the
+  `@selfagency/beans-mcp` package version.
+- README and configuration docs now describe package versioning and Beans CLI
+  compatibility separately.
+
 ## [0.6.1] - 2026-04-18
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.6.0...v0.6.1
 
 _Source: changes from v0.6.0 to v0.6.1._
 
-
 ## [0.6.0] - 2026-04-18
 
 ## What's Changed
-* chore(deps): bump vite from 8.0.3 to 8.0.5 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/7
-* chore(deps-dev): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/8
-* fix: harden CLI parsing and backend safety by @selfagency in https://github.com/selfagency/beans-mcp/pull/10
-* chore(deps-dev): bump hono from 4.12.12 to 4.12.14 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/9
 
+- chore(deps): bump vite from 8.0.3 to 8.0.5 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/7
+- chore(deps-dev): bump the npm_and_yarn group across 1 directory with 2 updates by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/8
+- fix: harden CLI parsing and backend safety by @selfagency in https://github.com/selfagency/beans-mcp/pull/10
+- chore(deps-dev): bump hono from 4.12.12 to 4.12.14 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/beans-mcp/pull/9
 
 **Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.5.0...v0.6.0
 
 _Source: changes from v0.5.0 to v0.6.0._
-
 
 ## [0.5.2] - 2026-04-06
 

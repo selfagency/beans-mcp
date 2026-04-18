@@ -18,11 +18,12 @@ npx @selfagency/beans-mcp /path/to/workspace
 
 ### Versioning
 
-`@selfagency/beans-mcp` tracks upstream [Beans](https://github.com/hmans/beans) versions.
-For example, Beans `v0.4.2` maps to `@selfagency/beans-mcp@0.4.2`.
+`@selfagency/beans-mcp` has its own package versioning. Compatibility with the
+[Beans](https://github.com/hmans/beans) CLI is tracked separately.
 
-At startup, the server compares its own package version against the installed `beans`
-CLI version. If they differ, it prints a warning to stderr and continues startup.
+At startup, the server compares the installed `beans` CLI version against the
+hardcoded supported Beans version: `0.4.2`. If they differ, it prints a warning
+to stderr and continues startup.
 
 ### Parameters
 

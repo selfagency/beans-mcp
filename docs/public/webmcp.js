@@ -14,20 +14,20 @@
           section: {
             type: 'string',
             enum: ['getting-started', 'tools', 'development'],
-            default: 'getting-started'
-          }
+            default: 'getting-started',
+          },
         },
-        additionalProperties: false
+        additionalProperties: false,
       },
       annotations: {
-        readOnlyHint: true
+        readOnlyHint: true,
       },
       execute: async input => {
         const section = input?.section ?? 'getting-started';
         const routes = {
           'getting-started': '/guide/getting-started',
           tools: '/tools/',
-          development: '/development/architecture'
+          development: '/development/architecture',
         };
 
         const targetPath = routes[section] ?? routes['getting-started'];
@@ -37,9 +37,9 @@
 
         return {
           ok: true,
-          url: targetUrl
+          url: targetUrl,
         };
-      }
+      },
     });
   } catch {
     // Ignore duplicate registration or unsupported runtime errors.

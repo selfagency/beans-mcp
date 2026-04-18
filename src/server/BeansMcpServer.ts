@@ -22,6 +22,7 @@ import type { BackendInterface } from './backend';
 export { sortBeans };
 
 const execFileAsync = promisify(execFile);
+export const COMPATIBLE_BEANS_VERSION = '0.4.2';
 const PACKAGE_VERSION = (pkgJson as { version?: string }).version ?? '0.0.0-dev';
 const CLOSED_STATUSES = new Set(['completed', 'scrapped']);
 const BEAN_ID_HINT = 'Missing required field `beanId`. Did you mean `beanId`?';
@@ -269,14 +270,14 @@ async function checkVersionCompatibility(
   const detectedBeansVersion = await detector(cliPath, workspaceRoot);
   if (!detectedBeansVersion) {
     console.error(
-      `[beans-mcp] warning: unable to determine Beans CLI version from \`${cliPath}\`; proceeding without version compatibility checks.`,
+      `[beans-mcp] warning: unable to determine Beans CLI version from \`${cliPath}\`; expected Beans ${COMPATIBLE_BEANS_VERSION}, but proceeding without compatibility checks.`,
     );
     return;
   }
 
-  if (detectedBeansVersion !== PACKAGE_VERSION) {
+  if (detectedBeansVersion !== COMPATIBLE_BEANS_VERSION) {
     console.error(
-      `[beans-mcp] warning: version mismatch detected (beans=${detectedBeansVersion}, beans-mcp=${PACKAGE_VERSION}); continuing startup.`,
+      `[beans-mcp] warning: version mismatch detected (beans=${detectedBeansVersion}, supported=${COMPATIBLE_BEANS_VERSION}, beans-mcp=${PACKAGE_VERSION}); continuing startup.`,
     );
   }
 }
