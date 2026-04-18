@@ -412,20 +412,24 @@ async function main() {
   pkg.version = version;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
-  // --- Update server.json ---------------------------------------------------
+  // --- Update server.json (optional legacy root descriptor) -----------------
   const serverJsonPath = resolve(ROOT, 'server.json');
-  let serverJson;
-  try {
-    serverJson = JSON.parse(readFileSync(serverJsonPath, 'utf8'));
-    serverJson.version = version;
-    if (Array.isArray(serverJson.packages) && serverJson.packages.length > 0) {
-      serverJson.packages[0].version = version;
+  if (existsSync(serverJsonPath)) {
+    let serverJson;
+    try {
+      serverJson = JSON.parse(readFileSync(serverJsonPath, 'utf8'));
+      serverJson.version = version;
+      if (Array.isArray(serverJson.packages) && serverJson.packages.length > 0) {
+        serverJson.packages[0].version = version;
+      }
+      writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + '\n');
+      console.log(`🧩 Updated server.json to ${version}...`);
+    } catch (e) {
+      console.error('❌ Failed to update server.json:', e);
+      process.exit(1);
     }
-    writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + '\n');
-    console.log(`🧩 Updated server.json to ${version}...`);
-  } catch (e) {
-    console.error('❌ Failed to update server.json:', e);
-    process.exit(1);
+  } else {
+    console.log('ℹ️  server.json not found at repository root; skipping legacy descriptor update.');
   }
 
   // --- Update docs/public/server.json --------------------------------------
