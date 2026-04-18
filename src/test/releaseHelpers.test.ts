@@ -85,7 +85,14 @@ describe('createDistPackage', () => {
     });
 
     expect(distPkg.bin).toEqual({ 'beans-mcp': 'beans-mcp-server.cjs' });
-    expect(distPkg.files).toEqual(['index.cjs', 'index.js', 'index.d.ts', 'beans-mcp-server.cjs']);
+    expect(distPkg.files).toEqual([
+      'index.cjs',
+      'index.js',
+      'index.d.ts',
+      'beans-mcp-server.cjs',
+      'skills',
+      'skills-lock.json',
+    ]);
   });
 });
 

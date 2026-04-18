@@ -16,7 +16,7 @@ export function createDistPackage(rootPkg) {
     main: './index.cjs',
     module: './index.js',
     types: './index.d.ts',
-    files: ['index.cjs', 'index.js', 'index.d.ts', 'beans-mcp-server.cjs'],
+    files: ['index.cjs', 'index.js', 'index.d.ts', 'beans-mcp-server.cjs', 'skills', 'skills-lock.json'],
     bin: {
       'beans-mcp': 'beans-mcp-server.cjs',
     },

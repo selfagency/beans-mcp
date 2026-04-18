@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
+import { copyFile, cp, mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { createDistPackage } from './lib/dist-package.js';
@@ -20,6 +20,16 @@ async function main() {
   const readmeDest = resolve(outDir, 'README.md');
   await copyFile(readmeSrc, readmeDest);
   console.log('Copied', readmeSrc, 'to', readmeDest);
+
+  const skillsSrc = resolve(__dirname, '..', 'skills');
+  const skillsDest = resolve(outDir, 'skills');
+  await cp(skillsSrc, skillsDest, { recursive: true });
+  console.log('Copied', skillsSrc, 'to', skillsDest);
+
+  const skillsLockSrc = resolve(__dirname, '..', 'skills-lock.json');
+  const skillsLockDest = resolve(outDir, 'skills-lock.json');
+  await copyFile(skillsLockSrc, skillsLockDest);
+  console.log('Copied', skillsLockSrc, 'to', skillsLockDest);
 }
 
 main().catch(err => {
