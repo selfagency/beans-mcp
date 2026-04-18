@@ -63,6 +63,32 @@ function runGit(args, options = {}) {
   return result;
 }
 
+/**
+ * Run a subprocess attached to the caller terminal so interactive auth flows
+ * (OTP prompts, browser login handoffs) can complete successfully.
+ */
+function runInteractive(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: false,
+    env: process.env,
+    ...options,
+  });
+
+  if (result.error) {
+    throw new Error(`${command} ${args.join(' ')} failed to spawn: ${result.error.message}`);
+  }
+
+  if (result.signal) {
+    throw new Error(`${command} ${args.join(' ')} was terminated by signal ${result.signal}`);
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}`);
+  }
+}
+
 function resolveGitExecutable() {
   const direct = spawnSync('git', ['--version'], { stdio: 'ignore', shell: false });
   if (direct.status === 0) {
@@ -572,7 +598,19 @@ async function main() {
       ...accessFlag,
       ...(otp ? [`--otp=${otp}`] : []),
     ];
-    await $({ env: selectedNpmEnv })`npm ${publishArgs}`;
+    try {
+      await $({ env: selectedNpmEnv })`npm ${publishArgs}`;
+    } catch (err) {
+      const output = `${err?.stdout ?? ''}\n${err?.stderr ?? ''}`;
+      if (!output.includes('EOTP')) {
+        throw err;
+      }
+
+      console.error('⚠️  npm publish requested interactive OTP/browser authentication.');
+      console.error('   Retrying publish in interactive mode...');
+      $.verbose = false;
+      runInteractive('npm', publishArgs, { env: selectedNpmEnv });
+    }
     $.verbose = false;
     console.log(`✅ Published ${tag} to npm.`);
   } catch (err) {
