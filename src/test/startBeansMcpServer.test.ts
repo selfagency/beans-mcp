@@ -170,8 +170,8 @@ describe('startBeansMcpServer', () => {
     expect(vi.mocked(BeansCliBackend)).toHaveBeenCalledTimes(1);
   });
 
-  it('warns but proceeds when Beans CLI version mismatches package version', async () => {
-    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+  it('warns but proceeds when Beans CLI version differs from the supported Beans version', async () => {
+    const { COMPATIBLE_BEANS_VERSION, startBeansMcpServer } = await import('../server/BeansMcpServer');
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
@@ -181,11 +181,12 @@ describe('startBeansMcpServer', () => {
     await flushMicrotasks();
 
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: version mismatch detected'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining(`supported=${COMPATIBLE_BEANS_VERSION}`));
     spy.mockRestore();
   });
 
   it('warns but proceeds when Beans CLI version cannot be determined', async () => {
-    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+    const { COMPATIBLE_BEANS_VERSION, startBeansMcpServer } = await import('../server/BeansMcpServer');
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => null)).resolves.toBeUndefined();
@@ -193,15 +194,16 @@ describe('startBeansMcpServer', () => {
     await flushMicrotasks();
 
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning: unable to determine Beans CLI version'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining(`expected Beans ${COMPATIBLE_BEANS_VERSION}`));
     spy.mockRestore();
   });
 
-  it('does not emit mismatch warning when versions match', async () => {
-    const { startBeansMcpServer } = await import('../server/BeansMcpServer');
+  it('does not emit mismatch warning when CLI version matches the supported Beans version', async () => {
+    const { COMPATIBLE_BEANS_VERSION, startBeansMcpServer } = await import('../server/BeansMcpServer');
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(
-      startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => (pkgJson as { version: string }).version),
+      startBeansMcpServer(['--workspace-root', '/w'], undefined, async () => COMPATIBLE_BEANS_VERSION),
     ).resolves.toBeUndefined();
 
     const logged = spy.mock.calls.map(call => String(call[0]));

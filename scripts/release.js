@@ -621,7 +621,9 @@ async function main() {
       console.error('   npm now requires a granular write token with Bypass 2FA enabled for OTP-less publishes.');
       console.error('   Update the token on your npm account, then retry the release.');
       console.error('   If your account still requires OTP, set NPM_PUBLISH_OTP or NPM_OTP.');
-      console.error('   Optional: set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) for automatic OTP retrieval.');
+      console.error(
+        '   Optional: set NPM_OTP_1PASSWORD_ITEM (or DEFAULT_NPM_OTP_1PASSWORD_ITEM) for automatic OTP retrieval.',
+      );
     }
     throw err;
   } finally {

@@ -9,7 +9,8 @@
 
 ## Version compatibility behavior
 
-At startup, `beans-mcp` probes `beans version` and compares CLI version with package version.
+At startup, `beans-mcp` probes `beans version` and compares the detected CLI
+version with the currently supported Beans version: `0.4.2`.
 
 - Mismatch is warning-only (startup continues)
 - Warning is written to stderr only (stdout preserved for MCP transport)
