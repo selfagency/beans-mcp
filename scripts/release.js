@@ -428,6 +428,45 @@ async function main() {
     process.exit(1);
   }
 
+  // --- Update docs/public/server.json --------------------------------------
+  const docsServerJsonPath = resolve(ROOT, 'docs/public/server.json');
+  let docsServerJson;
+  try {
+    docsServerJson = JSON.parse(readFileSync(docsServerJsonPath, 'utf8'));
+    docsServerJson.version = version;
+    if (Array.isArray(docsServerJson.packages) && docsServerJson.packages.length > 0) {
+      docsServerJson.packages[0].version = version;
+    }
+    writeFileSync(docsServerJsonPath, JSON.stringify(docsServerJson, null, 2) + '\n');
+    console.log(`🧩 Updated docs/public/server.json to ${version}...`);
+  } catch (e) {
+    console.error('❌ Failed to update docs/public/server.json:', e);
+    process.exit(1);
+  }
+
+  // --- Update docs/public/.well-known/mcp/server-card.json -----------------
+  const serverCardPath = resolve(ROOT, 'docs/public/.well-known/mcp/server-card.json');
+  let serverCard;
+  try {
+    serverCard = JSON.parse(readFileSync(serverCardPath, 'utf8'));
+    if (!serverCard.serverInfo || typeof serverCard.serverInfo !== 'object') {
+      serverCard.serverInfo = {};
+    }
+    serverCard.serverInfo.version = version;
+    if (Array.isArray(serverCard.transports)) {
+      for (const transport of serverCard.transports) {
+        if (transport?.package && typeof transport.package === 'object') {
+          transport.package.version = version;
+        }
+      }
+    }
+    writeFileSync(serverCardPath, JSON.stringify(serverCard, null, 2) + '\n');
+    console.log(`🧩 Updated docs/public/.well-known/mcp/server-card.json to ${version}...`);
+  } catch (e) {
+    console.error('❌ Failed to update docs/public/.well-known/mcp/server-card.json:', e);
+    process.exit(1);
+  }
+
   // --- Update CHANGELOG.md --------------------------------------------------
 
   console.log('🧩 Updating CHANGELOG.md...');

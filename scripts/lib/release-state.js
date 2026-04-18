@@ -1,7 +1,13 @@
 export const DEFAULT_NPM_OTP_1PASSWORD_ITEM = '';
 
 export function getReleaseMetadataFiles() {
-  return ['package.json', 'server.json', 'CHANGELOG.md'];
+  return [
+    'package.json',
+    'server.json',
+    'docs/public/server.json',
+    'docs/public/.well-known/mcp/server-card.json',
+    'CHANGELOG.md',
+  ];
 }
 
 export function resolveOtpItemId(env) {
