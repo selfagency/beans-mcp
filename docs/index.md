@@ -1,5 +1,7 @@
 # beans-mcp
 
+![beans-mcp icon](./assets/icon.svg)
+
 Production-ready MCP server for the [Beans](https://github.com/hmans/beans) issue tracker.
 
 ## What you get
