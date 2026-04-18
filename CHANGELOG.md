@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-18
+
+## What's Changed
+* Fix Beans CLI compatibility checks by @selfagency in https://github.com/selfagency/beans-mcp/pull/11
+
+
+**Full Changelog**: https://github.com/selfagency/beans-mcp/compare/v0.6.1...v0.6.2
+
+_Source: changes from v0.6.1 to v0.6.2._
+
+
 ### Changed
 
 - Startup compatibility checks now compare the installed `beans` CLI version
