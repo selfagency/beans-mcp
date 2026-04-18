@@ -1,13 +1,13 @@
 import { defineConfig } from 'vitepress';
 
-const SITE_URL = 'https://selfagency.github.io/beans-mcp';
+const SITE_URL = 'https://beans-mcp.self.agency';
 
 export default defineConfig({
   title: 'beans-mcp',
   description:
     'MCP server for Beans issue tracker with workspace lifecycle, querying, file operations, and automation-friendly APIs.',
   lang: 'en-US',
-  base: '/beans-mcp/',
+  base: '/',
 
   sitemap: {
     hostname: SITE_URL,
