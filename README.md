@@ -2,9 +2,11 @@
 
 <img src="docs/assets/icon.png" alt="beans-mcp icon" width="300" />
 
-[![Test & Build](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml) [![codecov](https://codecov.io/gh/selfagency/beans-mcp/graph/badge.svg?token=udeAJyu8Nu)](https://codecov.io/gh/selfagency/beans-mcp)
+[![Test & Build](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/selfagency/beans-mcp/actions/workflows/test.yml) [![codecov](https://codecov.io/gh/selfagency/beans-mcp/graph/badge.svg?token=udeAJyu8Nu)](https://codecov.io/gh/selfagency/beans-mcp) ![NPM Version](https://img.shields.io/npm/v/:@selfagency/beans-mcp)
 
 MCP (Model Context Protocol) server for [Beans](https://github.com/hmans/beans) issue tracker. Provides programmatic and CLI interfaces for AI-powered interactions with Beans workspaces.
+
+Documentation: [beans-mcp.self.agency](https://beans-mcp.self.agency)
 
 > 🤖 **Try Beans fully-integrated with GitHub Copilot in VS Code! Install the <a href="https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode">selfagency.beans-vscode</a> extension.**
 
@@ -48,7 +50,8 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 | `beans_bean_file`      | Read/edit/create/delete files under `.beans`.                                                                                                                                        |
 | `beans_output`         | Read extension output logs or show guidance.                                                                                                                                         |
 
-### Notes
+<details>
+<summary>Notes</summary>
 
 - The `beans_query` tool is intentionally broad: prefer it for listing, searching, filtering or sorting beans, and for generating Copilot instructions (`operation: 'llm_context'`).
 - All file and log operations validate paths to keep them within the workspace or the VS Code log directory. The `.beans/` prefix is automatically stripped from paths — you can pass either `some-bean.md` or `.beans/some-bean.md` and the result is the same.
@@ -63,9 +66,12 @@ CLI version. If they differ, it prints a warning to stderr and continues startup
 - Version mismatches between `beans-mcp` and the Beans CLI are warning-only and non-blocking by design.
 - When `beanId` is missing in tool input, validation errors include a hint: `Did you mean \`beanId\`?`.
 
+</details>
+
 ## Examples
 
-### beans_init
+<details>
+<summary>beans_init</summary>
 
 Request:
 
@@ -79,7 +85,10 @@ Response (structuredContent):
 { "initialized": true }
 ```
 
-### beans_view
+</details>
+
+<details>
+<summary>beans_view</summary>
 
 Request:
 
@@ -110,7 +119,10 @@ Response (structuredContent):
 }
 ```
 
-### beans_archive
+</details>
+
+<details>
+<summary>beans_archive</summary>
 
 Request:
 
@@ -124,7 +136,10 @@ Response (example):
 { "archived": true, "archivedCount": 3 }
 ```
 
-### beans_create
+</details>
+
+<details>
+<summary>beans_create</summary>
 
 Request:
 
@@ -154,7 +169,10 @@ Response (structuredContent):
 }
 ```
 
-### beans_bulk_create
+</details>
+
+<details>
+<summary>beans_bulk_create</summary>
 
 Request:
 
@@ -186,7 +204,10 @@ Response (structuredContent):
 }
 ```
 
-### beans_bulk_update
+</details>
+
+<details>
+<summary>beans_bulk_update</summary>
 
 Request (move a batch of tasks to in-progress and assign them to a parent):
 
@@ -218,7 +239,10 @@ Response (structuredContent):
 
 > Both bulk tools are best-effort: partial failures are reported per-item rather than aborting the whole batch.
 
-### beans_update
+</details>
+
+<details>
+<summary>beans_update</summary>
 
 Request (change status and add blocking):
 
@@ -258,7 +282,10 @@ Response (structuredContent):
 }
 ```
 
-### beans_delete
+</details>
+
+<details>
+<summary>beans_delete</summary>
 
 Request:
 
@@ -292,7 +319,10 @@ Batch response (summary):
 }
 ```
 
-### beans_reopen
+</details>
+
+<details>
+<summary>beans_reopen</summary>
 
 Request:
 
@@ -310,7 +340,10 @@ Response:
 { "bean": { "id": "bean-closed", "status": "todo" } }
 ```
 
-### beans_complete_tasks
+</details>
+
+<details>
+<summary>beans_complete_tasks</summary>
 
 Request:
 
@@ -332,7 +365,10 @@ Response:
 }
 ```
 
-### beans_query — examples
+</details>
+
+<details>
+<summary>beans_query examples</summary>
 
 Refresh (list all beans):
 
@@ -410,7 +446,10 @@ With variables:
 }
 ```
 
-### beans_bean_file
+</details>
+
+<details>
+<summary>beans_bean_file</summary>
 
 Request (read):
 
@@ -456,7 +495,10 @@ Response:
 }
 ```
 
-### beans_output
+</details>
+
+<details>
+<summary>beans_output</summary>
 
 Request (read last 200 lines):
 
@@ -473,6 +515,8 @@ Response:
   "linesReturned": 200
 }
 ```
+
+</details>
 
 ## Programmatic usage
 
@@ -526,12 +570,16 @@ CLI-compatible entrypoint for launching the server.
 
 Export of GraphQL schema, Zod validation schemas, and TypeScript types for Beans records and operations.
 
-## Agent Skills (`skills-npm`)
+## Agent Skills (`skills-npm`, `skills.sh`)
 
-This package ships built-in Agent Skills under `skills/` using the npm-based skills convention.
+This package ships a built-in Agent Skill under `skills/` and also publishes that skill in a format that fits the broader open skills ecosystem surfaced by [skills.sh](https://skills.sh/).
 
 - Skill path in package: `skills/beans-mcp/SKILL.md`
+- Published skill artifact: `https://beans-mcp.self.agency/.well-known/agent-skills/beans-mcp/SKILL.md`
+- Published discovery index: `https://beans-mcp.self.agency/.well-known/agent-skills/index.json`
 - Compatible with discovery tools that scan: `node_modules/**/skills/*/SKILL.md`
+
+That means you can use it with npm-based workflows such as `skills-npm`, while also pointing ecosystem tooling at the published skill artifact and discovery index used by skills catalogs like `skills.sh`.
 
 To symlink installed npm-packaged skills into your agent workspace, you can use `skills-npm` in your consuming project.
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "beans-mcp",
+      "type": "local-skill",
+      "description": "Manage Beans work items in a Beans workspace through beans-mcp.",
+      "url": "https://beans-mcp.self.agency/.well-known/agent-skills/beans-mcp/SKILL.md",
+      "digest": "sha256:99ff9b6a8f1f8ee3852c86d977723389189c21f45edb7bd416b39d9fd9960035"
+    }
+  ]
+}

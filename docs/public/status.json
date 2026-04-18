@@ -1,0 +1,8 @@
+{
+  "service": "beans-mcp",
+  "status": "operational",
+  "updatedAt": "2026-04-17T00:00:00Z",
+  "homepage": "https://beans-mcp.self.agency/",
+  "documentation": "https://beans-mcp.self.agency/guide/getting-started",
+  "repository": "https://github.com/selfagency/beans-mcp"
+}

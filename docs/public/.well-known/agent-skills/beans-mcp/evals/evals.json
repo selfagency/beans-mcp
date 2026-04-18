@@ -1,0 +1,32 @@
+{
+  "skill_name": "beans-mcp",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Please move bean task-001 under epic-auth and set it to in-progress, then add PR 123 and branch feature/auth-refresh in frontmatter.",
+      "expected_output": "The bean is reassigned to the target parent, status is updated to in-progress, and frontmatter includes pr=123 and branch=feature/auth-refresh without body corruption.",
+      "assertions": [
+        "The output confirms parent reassignment for task-001",
+        "The output confirms status is in-progress",
+        "The output confirms frontmatter pr is set to 123",
+        "The output confirms frontmatter branch is set to feature/auth-refresh"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Mark all markdown checklist tasks complete for bean task-ops-22 and close it if all tasks are done.",
+      "expected_output": "Checklist items are marked completed using beans_complete_tasks, then bean status is updated to completed only if appropriate.",
+      "assertions": [
+        "The output shows totalTaskCount and updatedTaskCount from beans_complete_tasks",
+        "No invalid body/bodyAppend/bodyReplace combination is attempted",
+        "Final status transition is explicitly reported"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Open a GitHub issue in selfagency/beans-mcp titled 'Docs typo'.",
+      "expected_output": "The skill should not trigger; this is a generic GitHub issue workflow and not Beans workspace work.",
+      "assertions": ["The response indicates this request is outside Beans skill scope"]
+    }
+  ]
+}

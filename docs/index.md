@@ -4,6 +4,8 @@
 
 Production-ready MCP server for the [Beans](https://github.com/hmans/beans) issue tracker.
 
+Public documentation: [beans-mcp.self.agency](https://beans-mcp.self.agency)
+
 ## What you get
 
 - Full tool coverage for workspace setup, bean lifecycle, querying, and file ops

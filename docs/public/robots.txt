@@ -1,0 +1,93 @@
+User-agent: *
+Allow: /
+Allow: /.well-known/
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: GPTBot
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: OAI-SearchBot
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: Claude-Web
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: Google-Extended
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: Amazonbot
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: anthropic-ai
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: Bytespider
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: CCBot
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+User-agent: Applebot-Extended
+Allow: /guide/
+Allow: /tools/
+Allow: /development/
+Allow: /.well-known/
+Allow: /server.json
+Allow: /status.json
+Disallow:
+
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+Sitemap: https://beans-mcp.self.agency/sitemap.xml

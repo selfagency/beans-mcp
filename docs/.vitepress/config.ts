@@ -14,6 +14,20 @@ export default defineConfig({
   },
 
   head: [
+    [
+      'link',
+      {
+        rel: 'api-catalog',
+        href: '/.well-known/api-catalog',
+        type: 'application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"',
+      },
+    ],
+    ['link', { rel: 'service-desc', href: '/server.json', type: 'application/json' }],
+    ['link', { rel: 'service-doc', href: '/guide/getting-started', type: 'text/html' }],
+    ['link', { rel: 'describedby', href: '/.well-known/mcp/server-card.json', type: 'application/json' }],
+    ['link', { rel: 'mcp-server-card', href: '/.well-known/mcp/server-card.json', type: 'application/json' }],
+    ['link', { rel: 'agent-skills', href: '/.well-known/agent-skills/index.json', type: 'application/json' }],
+    ['meta', { name: 'content-signal', content: 'ai-train=no, search=yes, ai-input=yes' }],
     ['meta', { name: 'theme-color', content: '#0f172a' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'beans-mcp' }],
