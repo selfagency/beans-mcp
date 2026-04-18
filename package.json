@@ -14,16 +14,27 @@
   "bugs": {
     "url": "https://github.com/selfagency/beans-mcp/issues"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selfagency/beans-mcp.git"
+  },
   "license": "MIT",
   "author": {
     "name": "Daniel Sieradski",
     "email": "daniel@self.agency",
     "url": "https://self.agency"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/selfagency/beans-mcp.git"
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
   },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "beans-mcp": "dist/beans-mcp-server.cjs"
   },
@@ -33,32 +44,27 @@
     "README.md",
     "LICENSE.txt"
   ],
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
   "scripts": {
     "build": "tsup",
-    "docs:dev": "vitepress dev docs",
+    "postbuild": "node ./scripts/write-dist-package.js",
     "docs:build": "vitepress build docs",
+    "docs:dev": "vitepress dev docs",
     "docs:preview": "vitepress preview docs",
     "format": "oxfmt",
-    "lint:fix": "oxlint --fix",
     "lint": "oxlint",
-    "postbuild": "node ./scripts/write-dist-package.js",
+    "lint:fix": "oxlint --fix",
     "prepare": "husky",
     "release": "zx ./scripts/release.js",
+    "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test": "vitest run",
     "type-check": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "pnpm run lint:fix",
+      "pnpm run format"
+    ]
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -78,12 +84,6 @@
     "vitest": "4.1.4",
     "zod": "4.3.6",
     "zx": "^8.8.5"
-  },
-  "lint-staged": {
-    "src/**/*.ts": [
-      "pnpm run lint:fix",
-      "pnpm run format"
-    ]
   },
   "engines": {
     "node": ">=18"
