@@ -10,7 +10,7 @@
         {
           "href": "https://beans-mcp.self.agency/.well-known/mcp/server-card.json",
           "type": "application/json"
-        },
+        }
       ],
       "service-doc": [
         {
