@@ -25,6 +25,8 @@ export default defineConfig({
     ['link', { rel: 'service-desc', href: '/server.json', type: 'application/json' }],
     ['link', { rel: 'service-doc', href: '/guide/getting-started', type: 'text/html' }],
     ['link', { rel: 'describedby', href: '/.well-known/mcp/server-card.json', type: 'application/json' }],
+    ['link', { rel: 'describedby', href: '/.well-known/oauth-protected-resource', type: 'application/json' }],
+    ['link', { rel: 'describedby', href: '/.well-known/openid-configuration', type: 'application/json' }],
     ['link', { rel: 'mcp-server-card', href: '/.well-known/mcp/server-card.json', type: 'application/json' }],
     ['link', { rel: 'agent-skills', href: '/.well-known/agent-skills/index.json', type: 'application/json' }],
     ['meta', { name: 'content-signal', content: 'ai-train=no, search=yes, ai-input=yes' }],
@@ -96,6 +98,8 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    logo: '/logo.png',
+
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Tools', link: '/tools/' },

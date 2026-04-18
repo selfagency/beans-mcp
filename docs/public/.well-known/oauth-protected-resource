@@ -1,0 +1,10 @@
+{
+  "resource": "https://beans-mcp.self.agency/mcp",
+  "authorization_servers": [
+    "https://beans-mcp.self.agency"
+  ],
+  "scopes_supported": [
+    "mcp:read",
+    "mcp:write"
+  ]
+}

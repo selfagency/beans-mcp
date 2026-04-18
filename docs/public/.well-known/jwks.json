@@ -1,0 +1,12 @@
+{
+  "keys": [
+    {
+      "kid": "beans-mcp-signing-key-1",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "x": "6Nqby2jvKgaY9mR9wD4k0v7bUfM9Jb6vN6z4v3Yp6vY"
+    }
+  ]
+}

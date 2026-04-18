@@ -1,0 +1,7 @@
+{
+  "name": "beans-mcp",
+  "status": "operational",
+  "updatedAt": "2026-04-17T00:00:00Z",
+  "server_card": "https://beans-mcp.self.agency/.well-known/mcp/server-card.json",
+  "docs": "https://beans-mcp.self.agency/guide/getting-started"
+}

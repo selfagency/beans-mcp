@@ -8,7 +8,13 @@ The documentation site publishes the following discovery artifacts at `https://b
 - `/server.json`
 - `/status.json`
 - `/.well-known/api-catalog`
+- `/.well-known/mcp.json`
 - `/.well-known/mcp/server-card.json`
+- `/.well-known/openid-configuration`
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/jwks.json`
+- `/.well-known/http-message-signatures-directory`
 - `/.well-known/agent-skills/index.json`
 - `/.well-known/agent-skills/beans-mcp/SKILL.md`
 
@@ -23,7 +29,7 @@ That means the repository can publish static discovery files and HTML `<link>` h
 - **Response `Link` headers** on the homepage or well-known endpoints
 - **Markdown content negotiation** for `Accept: text/markdown`
 
-Those features require origin or edge control such as Cloudflare Workers, Transform Rules, or another host that can set response headers and vary content by request headers.
+Those features require origin or edge control (for example, host-level response header configuration or a reverse proxy) that can set response headers and vary content by request headers.
 
 ## Query-generated workspace instructions
 

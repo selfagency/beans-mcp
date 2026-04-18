@@ -490,37 +490,6 @@ async function main() {
     await waitForWorkflow(octokit, name, owner, repo, headSha, spinner);
   }
 
-  // --- Tag + publish --------------------------------------------------------
-
-  console.log(`🏷️  Creating annotated tag ${tag} at ${headSha}...`);
-
-  const tagMessage = [
-    `Release ${tag}`,
-    releaseNotes,
-    previousTag ? `Source: changes from ${previousTag} to ${tag}.` : '',
-    `Target commit: ${headSha}`,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-
-  runGit(['tag', '-a', tag, headSha, '-m', tagMessage]);
-
-  console.log(`🚀 Pushing tag ${tag}...`);
-  runGit(['push', 'origin', tag]);
-  tagPushed = true;
-
-  // --- Watch the release workflow ------------------------------------------
-
-  spinner.text = 'Release: waiting for workflow to trigger...';
-  spinner.start();
-  await waitForWorkflow(octokit, 'Release', owner, repo, headSha, spinner, {
-    autoDispatch: false,
-    branch: null,
-  });
-
-  githubReleaseCreated = true;
-  console.log(`✅ GitHub release complete: ${tag} → ${headSha}`);
-
   // --- npm publish ----------------------------------------------------------
 
   console.log('📦 Building package...');
@@ -562,7 +531,6 @@ async function main() {
     ];
     await $({ env: selectedNpmEnv })`npm ${publishArgs}`;
     $.verbose = false;
-    releaseDone = true;
     console.log(`✅ Published ${tag} to npm.`);
   } catch (err) {
     $.verbose = false;
@@ -578,6 +546,41 @@ async function main() {
   } finally {
     rmSync(npmUserConfigDir, { recursive: true, force: true });
   }
+
+  // Once npm publish succeeds, we never auto-rollback commit/tag/release:
+  // npm versions are immutable and should remain paired with source metadata.
+  releaseDone = true;
+
+  // --- Tag + GitHub release -------------------------------------------------
+
+  console.log(`🏷️  Creating annotated tag ${tag} at ${headSha}...`);
+
+  const tagMessage = [
+    `Release ${tag}`,
+    releaseNotes,
+    previousTag ? `Source: changes from ${previousTag} to ${tag}.` : '',
+    `Target commit: ${headSha}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  runGit(['tag', '-a', tag, headSha, '-m', tagMessage]);
+
+  console.log(`🚀 Pushing tag ${tag}...`);
+  runGit(['push', 'origin', tag]);
+  tagPushed = true;
+
+  // --- Watch the release workflow ------------------------------------------
+
+  spinner.text = 'Release: waiting for workflow to trigger...';
+  spinner.start();
+  await waitForWorkflow(octokit, 'Release', owner, repo, headSha, spinner, {
+    autoDispatch: false,
+    branch: null,
+  });
+
+  githubReleaseCreated = true;
+  console.log(`✅ GitHub release complete: ${tag} → ${headSha}`);
 }
 
 // ---------------------------------------------------------------------------
