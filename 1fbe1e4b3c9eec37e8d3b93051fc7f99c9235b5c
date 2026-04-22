@@ -1,0 +1,26 @@
+src/server/BeansMcpServer.ts
+  h_5cf1e2c1161853 82-84,86-87,141-142,145,151,158-168,171,173,175-180,293-300,329-330,337,383-385,489,495-501,1070,1209-1221,1235
+src/index.ts
+  h_5cf1e2c1161853 21
+.oxlintrc.json
+  h_5cf1e2c1161853 6
+src/server/backend.ts
+  h_5cf1e2c1161853 3,494-495,499-507,527-528,531-538,540-542,544-549,592-593,595,600-604,950-953,985,989-996
+src/test/handlers.unit.test.ts
+  h_5cf1e2c1161853 5,124-130,370-386
+src/test/backend.frontmatter.test.ts
+  h_5cf1e2c1161853 70-104
+src/test/parseCliArgs.test.ts
+  h_5cf1e2c1161853 33-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "1fbe1e4b3c9eec37e8d3b93051fc7f99c9235b5c",
+  "prompts": {},
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}

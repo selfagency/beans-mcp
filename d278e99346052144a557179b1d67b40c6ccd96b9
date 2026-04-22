@@ -1,0 +1,20 @@
+docs/.vitepress/theme/index.ts
+  h_5cf1e2c1161853 1-6
+docs/.vitepress/theme/custom.css
+  h_5cf1e2c1161853 1-5
+docs/index.md
+  h_5cf1e2c1161853 3
+README.md
+  h_5cf1e2c1161853 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "d278e99346052144a557179b1d67b40c6ccd96b9",
+  "prompts": {},
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}

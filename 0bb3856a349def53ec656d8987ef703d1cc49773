@@ -1,0 +1,22 @@
+src/server/BeansMcpServer.ts
+  h_5cf1e2c1161853 25,273,278,280
+README.md
+  h_5cf1e2c1161853 21-22,24-25
+docs/guide/configuration.md
+  h_5cf1e2c1161853 12-13
+CHANGELOG.md
+  h_5cf1e2c1161853 10-17,28-31
+src/test/startBeansMcpServer.test.ts
+  h_5cf1e2c1161853 173-174,184,189,197,201-202,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "0bb3856a349def53ec656d8987ef703d1cc49773",
+  "prompts": {},
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}
