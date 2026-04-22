@@ -3,12 +3,12 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    DEFAULT_SCHEMA_URL,
-    fetchRegistrySchema,
-    formatValidationErrors,
-    loadRegistryMetadata,
-    validateRegistryMetadataSync,
-    validateServerJsonSchemaSubset,
+  DEFAULT_SCHEMA_URL,
+  fetchRegistrySchema,
+  formatValidationErrors,
+  loadRegistryMetadata,
+  validateRegistryMetadataSync,
+  validateServerJsonSchemaSubset,
 } from './lib/registry-metadata.js';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '..');
