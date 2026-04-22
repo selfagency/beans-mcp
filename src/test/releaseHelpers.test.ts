@@ -91,7 +91,7 @@ describe('createDistPackage', () => {
       repository: { type: 'git', url: 'git+https://github.com/selfagency/beans-mcp.git' },
       license: 'MIT',
       author: { name: 'Daniel' },
-      mcpName: 'agency.self/beans-mcp',
+      mcpName: 'io.github.selfagency/beans-mcp',
     });
 
     expect(distPkg.bin).toEqual({ 'beans-mcp': 'beans-mcp-server.cjs' });
@@ -174,10 +174,10 @@ describe('registry metadata validation', () => {
       packageJson: {
         name: '@selfagency/beans-mcp',
         version: '0.6.2',
-        mcpName: 'agency.self/beans-mcp',
+        mcpName: 'io.github.selfagency/beans-mcp',
       },
       serverJson: {
-        name: 'agency.self/beans-mcp',
+        name: 'io.github.selfagency/beans-mcp',
         version: '0.6.2',
         packages: [
           {
@@ -199,7 +199,7 @@ describe('registry metadata validation', () => {
         version: '0.6.2',
       },
       serverJson: {
-        name: 'agency.self/beans-mcp',
+        name: 'io.github.selfagency/beans-mcp',
         version: '0.6.2',
         packages: [
           {
@@ -218,10 +218,10 @@ describe('registry metadata validation', () => {
       packageJson: {
         name: '@selfagency/beans-mcp',
         version: '0.6.2',
-        mcpName: 'agency.self.wrong-package',
+        mcpName: 'io.github.selfagency.wrong-package',
       },
       serverJson: {
-        name: 'agency.self.beans-mcp',
+        name: 'io.github.selfagency.beans-mcp',
         version: '0.6.2',
         packages: [
           {
@@ -233,7 +233,7 @@ describe('registry metadata validation', () => {
     });
 
     expect(errors).toContain(
-      "mcpName mismatch: package.json has 'agency.self.wrong-package', server.json has 'agency.self.beans-mcp'.",
+      "mcpName mismatch: package.json has 'io.github.selfagency.wrong-package', server.json has 'io.github.selfagency.beans-mcp'.",
     );
   });
 
@@ -242,10 +242,10 @@ describe('registry metadata validation', () => {
       packageJson: {
         name: '@selfagency/beans-mcp',
         version: '0.6.2',
-        mcpName: 'agency.self.beans-mcp',
+        mcpName: 'io.github.selfagency.beans-mcp',
       },
       serverJson: {
-        name: 'agency.self.beans-mcp',
+        name: 'io.github.selfagency.beans-mcp',
         version: '0.6.3',
         packages: [
           {
@@ -264,10 +264,10 @@ describe('registry metadata validation', () => {
       packageJson: {
         name: '@selfagency/beans-mcp',
         version: '0.6.2',
-        mcpName: 'agency.self.beans-mcp',
+        mcpName: 'io.github.selfagency.beans-mcp',
       },
       serverJson: {
-        name: 'agency.self.beans-mcp',
+        name: 'io.github.selfagency.beans-mcp',
         version: '0.6.2',
         packages: [
           {
@@ -288,10 +288,10 @@ describe('registry metadata validation', () => {
       packageJson: {
         name: '@selfagency/beans-mcp',
         version: '0.6.2',
-        mcpName: 'agency.self.beans-mcp',
+        mcpName: 'io.github.selfagency.beans-mcp',
       },
       serverJson: {
-        name: 'agency.self.beans-mcp',
+        name: 'io.github.selfagency.beans-mcp',
         version: '0.6.2',
       },
     });
@@ -387,7 +387,7 @@ describe('registry metadata validation', () => {
 
   it('fails when server.json name is missing', () => {
     const errors = validateRegistryMetadataSync({
-      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'agency.self/beans-mcp' },
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
       serverJson: { version: '0.6.2', packages: [{ identifier: '@selfagency/beans-mcp', version: '0.6.2' }] },
     });
 
@@ -396,9 +396,9 @@ describe('registry metadata validation', () => {
 
   it('fails when package.json version is missing', () => {
     const errors = validateRegistryMetadataSync({
-      packageJson: { name: '@selfagency/beans-mcp', mcpName: 'agency.self/beans-mcp' },
+      packageJson: { name: '@selfagency/beans-mcp', mcpName: 'io.github.selfagency/beans-mcp' },
       serverJson: {
-        name: 'agency.self/beans-mcp',
+        name: 'io.github.selfagency/beans-mcp',
         version: '0.6.2',
         packages: [{ identifier: '@selfagency/beans-mcp', version: '0.6.2' }],
       },
@@ -409,9 +409,9 @@ describe('registry metadata validation', () => {
 
   it('fails when packages[0].version is missing', () => {
     const errors = validateRegistryMetadataSync({
-      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'agency.self/beans-mcp' },
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
       serverJson: {
-        name: 'agency.self/beans-mcp',
+        name: 'io.github.selfagency/beans-mcp',
         version: '0.6.2',
         packages: [{ identifier: '@selfagency/beans-mcp' }],
       },
@@ -422,9 +422,9 @@ describe('registry metadata validation', () => {
 
   it('fails when packages[0].identifier is missing', () => {
     const errors = validateRegistryMetadataSync({
-      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'agency.self/beans-mcp' },
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
       serverJson: {
-        name: 'agency.self/beans-mcp',
+        name: 'io.github.selfagency/beans-mcp',
         version: '0.6.2',
         packages: [{ version: '0.6.2' }],
       },

@@ -89,5 +89,5 @@
   "engines": {
     "node": ">=18"
   },
-  "mcpName": "agency.self/beans-mcp"
+  "mcpName": "io.github.selfagency/beans-mcp"
 }

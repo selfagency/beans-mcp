@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "agency.self/beans-mcp",
+  "name": "io.github.selfagency/beans-mcp",
   "description": "Interact with the Beans CLI issue tracker agentically",
   "repository": {
     "url": "https://github.com/selfagency/beans-mcp",

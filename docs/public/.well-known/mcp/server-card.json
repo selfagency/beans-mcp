@@ -1,6 +1,6 @@
 {
   "serverInfo": {
-    "name": "agency.self/beans-mcp",
+    "name": "io.github.selfagency/beans-mcp",
     "title": "beans-mcp",
     "version": "0.6.2",
     "description": "Interact with the Beans CLI issue tracker agentically"
