@@ -50,6 +50,8 @@
     "docs:build": "vitepress build docs",
     "docs:dev": "vitepress dev docs",
     "docs:preview": "vitepress preview docs",
+    "predocs:build": "node ./scripts/sync-skill-to-docs.js",
+    "predocs:dev": "node ./scripts/sync-skill-to-docs.js",
     "format": "oxfmt",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
