@@ -11,7 +11,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -325,3 +325,92 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rollback-tag-on-failure:
+    name: Rollback release tag on failure
+    needs: [ detect-tag, publish-to-npm, publish-to-mcp-registry, create-github-release-stable ]
+    if: always() && needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Determine if rollback is needed
+        id: check_failure
+        run: |
+          if [[ "${{ needs.publish-to-npm.result }}" == "success" ]] && \
+             [[ "${{ needs.publish-to-mcp-registry.result }}" == "success" || "${{ needs.publish-to-mcp-registry.result }}" == "skipped" ]] && \
+             [[ "${{ needs.create-github-release-stable.result }}" == "success" ]]; then
+            echo "all_critical_jobs_passed=true" >> $GITHUB_OUTPUT
+            echo "All critical post-publish jobs succeeded. No rollback needed."
+          else
+            echo "all_critical_jobs_passed=false" >> $GITHUB_OUTPUT
+            echo "Critical post-publish job failed. Rollback will be triggered."
+          fi
+
+      - name: Delete release tag if rollback needed
+        if: steps.check_failure.outputs.all_critical_jobs_passed != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tagName = '${{ needs.detect-tag.outputs.release_tag }}';
+
+            core.info(`Checking if release tag ${tagName} exists...`);
+            try {
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tagName}`,
+              });
+              core.info(`Deleting release tag ${tagName} due to workflow failure...`);
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tagName}`,
+              });
+              core.info(`Successfully deleted release tag ${tagName}`);
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`Release tag ${tagName} does not exist (404). Nothing to delete.`);
+              } else {
+                core.setFailed(`Failed to delete release tag ${tagName}: ${error.message}`);
+                throw error;
+              }
+            }
+
+      - name: Create GitHub issue for failed release
+        if: steps.check_failure.outputs.all_critical_jobs_passed != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tagName = '${{ needs.detect-tag.outputs.release_tag }}';
+            const runId = '${{ github.run_id }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+
+            const title = `🚨 Release ${tagName} failed - tag deleted`;
+            const body = `
+            The release workflow for \`${tagName}\` failed and the release tag was automatically deleted.
+
+            **Workflow Run:** ${runUrl}
+
+            **Status:** Critical post-publish jobs failed. The release tag \`${tagName}\` has been removed to prevent blocking future releases.
+
+            **Next Steps:**
+            1. Investigate the failure in the workflow run
+            2. Fix the issue
+            3. Create a new release tag (do not reuse the deleted tag)
+            4. Trigger the release workflow
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['release', 'bug', 'automated'],
+            });
+
+            core.info(`Created GitHub issue for failed release: ${title}`);
