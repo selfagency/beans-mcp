@@ -1,0 +1,29 @@
+.gitignore
+  h_5cf1e2c1161853 244-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "7690cfe7a9f1ab9220c268b65c3be148bff3f6b5",
+  "prompts": {
+    "472ee66b69118c62": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "abe75f91-36da-4730-9df5-174c8041b2c3",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Daniel Sieradski",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 390,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/4d12d4a7e33f4418b5271b09bc15b50ff9b9e9f15af9e9d02939ada2871b42c3"
+    }
+  },
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}
