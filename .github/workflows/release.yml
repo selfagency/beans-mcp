@@ -2,11 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: [ "v*" ]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.2.3)'
+        description: "Version to release (e.g. 1.2.3)"
         required: true
         type: string
 
@@ -210,8 +210,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -227,8 +227,41 @@ jobs:
         with:
           tag_name: ${{ needs.detect-tag.outputs.release_tag }}
           body_path: release-notes.md
-          files: '*.tgz'
+          files: "*.tgz"
           draft: false
           prerelease: ${{ contains(needs.detect-tag.outputs.release_tag, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-to-mcp-registry:
+    name: Publish to MCP Registry
+    needs: [ detect-tag, release ]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
+      !contains(needs.detect-tag.outputs.release_tag, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-tag.outputs.release_tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install mcp-publisher
+        run: npm install -g @modelcontextprotocol/publisher@latest
+
+      - name: Login to MCP Registry with GitHub OIDC
+        run: mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish
+        env:
+          MCP_PUBLISHER_SERVER_JSON_PATH: docs/public/server.json
