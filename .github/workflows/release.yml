@@ -233,9 +233,48 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  publish-to-npm:
+    name: Publish to npm
+    needs: [detect-tag, release]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
+      !contains(needs.detect-tag.outputs.release_tag, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-tag.outputs.release_tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm
+        run: npm publish ./dist --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   publish-to-mcp-registry:
     name: Publish to MCP Registry
-    needs: [ detect-tag, release ]
+    needs: [detect-tag, publish-to-npm]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
       !contains(needs.detect-tag.outputs.release_tag, '-')
     runs-on: ubuntu-latest
