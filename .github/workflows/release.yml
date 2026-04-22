@@ -230,8 +230,6 @@ jobs:
         run: pnpm build
 
       - name: Publish to npm (Trusted Publishers + provenance)
-        env:
-          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
           if [[ "${{ needs.detect-tag.outputs.release_tag }}" == *-* ]]; then
