@@ -56,7 +56,6 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "prepare": "husky",
-    "release": "zx ./scripts/release.js",
     "validate-registry-metadata": "node ./scripts/validate-registry-metadata.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
