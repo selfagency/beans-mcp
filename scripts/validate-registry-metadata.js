@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_SCHEMA_URL,
@@ -11,7 +11,7 @@ import {
   validateServerJsonSchemaSubset,
 } from './lib/registry-metadata.js';
 
-const ROOT = resolve(fileURLToPath(import.meta.url), '..');
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 async function main() {
   const args = process.argv.slice(2);
@@ -57,7 +57,7 @@ async function main() {
     console.log('\n✅ All registry metadata validation checks passed!');
   } catch (error) {
     console.error('\n❌ Validation failed with error:');
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }

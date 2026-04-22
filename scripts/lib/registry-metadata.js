@@ -79,8 +79,10 @@ export function validateServerJsonSchemaSubset({ serverJson, schema }) {
   }
 
   const requiredServerKeys = Array.isArray(serverDef.required) ? serverDef.required : [];
+  // Use a null-prototype object to prevent prototype injection via bracket access
+  const safeServerJson = Object.assign(Object.create(null), serverJson ?? {});
   for (const key of requiredServerKeys) {
-    if (serverJson?.[key] === undefined || serverJson?.[key] === null) {
+    if (safeServerJson[key] == null) {
       errors.push(`server.json missing required field '${key}'.`);
     }
   }
@@ -95,8 +97,10 @@ export function validateServerJsonSchemaSubset({ serverJson, schema }) {
   const packages = Array.isArray(serverJson?.packages) ? serverJson.packages : [];
   const requiredPackageKeys = Array.isArray(packageDef.required) ? packageDef.required : [];
   for (const [index, pkg] of packages.entries()) {
+    // Use a null-prototype object to prevent prototype injection via bracket access
+    const safePkg = Object.assign(Object.create(null), pkg ?? {});
     for (const key of requiredPackageKeys) {
-      if (pkg?.[key] === undefined || pkg?.[key] === null) {
+      if (safePkg[key] == null) {
         errors.push(`server.json packages[${index}] missing required field '${key}'.`);
       }
     }
