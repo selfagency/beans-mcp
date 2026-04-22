@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: [ "v*" ]
   workflow_dispatch:
     inputs:
       version:
@@ -197,7 +197,7 @@ jobs:
 
   publish-to-npm:
     name: Publish to npm
-    needs: [detect-tag, build-and-prepare]
+    needs: [ detect-tag, build-and-prepare ]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -230,6 +230,8 @@ jobs:
         run: pnpm build
 
       - name: Publish to npm (Trusted Publishers + provenance)
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
           if [[ "${{ needs.detect-tag.outputs.release_tag }}" == *-* ]]; then
@@ -241,7 +243,7 @@ jobs:
 
   publish-to-mcp-registry:
     name: Publish to MCP Registry
-    needs: [detect-tag, publish-to-npm]
+    needs: [ detect-tag, publish-to-npm ]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
       !contains(needs.detect-tag.outputs.release_tag, '-')
     runs-on: ubuntu-latest
@@ -274,7 +276,7 @@ jobs:
 
   create-github-release-prerelease:
     name: Create GitHub Release (prerelease)
-    needs: [detect-tag, build-and-prepare, publish-to-npm]
+    needs: [ detect-tag, build-and-prepare, publish-to-npm ]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
       contains(needs.detect-tag.outputs.release_tag, '-')
     runs-on: ubuntu-latest
@@ -301,7 +303,7 @@ jobs:
 
   create-github-release-stable:
     name: Create GitHub Release (stable)
-    needs: [detect-tag, build-and-prepare, publish-to-npm, publish-to-mcp-registry]
+    needs: [ detect-tag, build-and-prepare, publish-to-npm, publish-to-mcp-registry ]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
       !contains(needs.detect-tag.outputs.release_tag, '-')
     runs-on: ubuntu-latest
