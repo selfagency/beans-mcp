@@ -2,11 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.2.3)'
+        description: "Version to release (e.g. 1.2.3)"
         required: true
         type: string
 
@@ -29,6 +29,7 @@ jobs:
 
     outputs:
       release_tag: ${{ steps.tag.outputs.release_tag }}
+      release_sha: ${{ steps.tag.outputs.release_sha }}
       ready: ${{ steps.tag.outputs.ready }}
 
     steps:
@@ -51,11 +52,9 @@ jobs:
               }
               tagName = versionInput.startsWith('v') ? versionInput : `v${versionInput}`;
 
-              // Resolve HEAD of main
               const main = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
               const mainSha = main.data.commit.sha;
 
-              // Create the tag via API
               core.info(`Creating tag ${tagName} at ${mainSha}...`);
               await github.rest.git.createRef({
                 owner,
@@ -71,21 +70,18 @@ jobs:
             if (!tagName || !tagName.startsWith('v')) {
               core.info(`Ref '${context.ref}' is not a release tag; skipping.`);
               core.setOutput('release_tag', '');
+              core.setOutput('release_sha', '');
               core.setOutput('ready', 'false');
               return;
             }
 
-            const refData = await github.rest.git.getRef({
-              owner,
-              repo,
-              ref: `tags/${tagName}`,
-            });
-
+            const refData = await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
             const refObj = refData.data.object;
             const taggedSha =
               refObj.type === 'tag'
                 ? (await github.rest.git.getTag({ owner, repo, tag_sha: refObj.sha })).data.object.sha
                 : refObj.sha;
+
             const main = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
             const mainSha = main.data.commit.sha;
 
@@ -96,16 +92,9 @@ jobs:
               return;
             }
 
-            // Verify the full test suite passed on this commit.
             const requiredWorkflows = ['Test & Build'];
-
             for (const workflowName of requiredWorkflows) {
-              const workflowsResp = await github.rest.actions.listRepoWorkflows({
-                owner,
-                repo,
-                per_page: 100,
-              });
-
+              const workflowsResp = await github.rest.actions.listRepoWorkflows({ owner, repo, per_page: 100 });
               const workflow = workflowsResp.data.workflows.find(w => w.name === workflowName);
               if (!workflow) {
                 core.setFailed(`Release blocked: required workflow '${workflowName}' not found in repository.`);
@@ -129,6 +118,7 @@ jobs:
                 );
                 return;
               }
+
               if (run.conclusion !== 'success') {
                 core.setFailed(
                   `Release blocked: workflow '${workflowName}' concluded with '${run.conclusion}' on ${mainSha}.`
@@ -139,16 +129,18 @@ jobs:
 
             core.info(`Release tag detected: ${tagName} on latest main commit ${mainSha}; all checks passed.`);
             core.setOutput('release_tag', tagName);
+            core.setOutput('release_sha', taggedSha);
             core.setOutput('ready', 'true');
 
-  release:
-    name: Build and Release
+  build-and-prepare:
+    name: Build + Validate + Generate Notes
     needs: detect-tag
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout repository
@@ -156,51 +148,6 @@ jobs:
         with:
           ref: ${{ needs.detect-tag.outputs.release_tag }}
           fetch-depth: 0
-
-      - name: Generate release notes
-        id: changelog_notes
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const currentTag = '${{ needs.detect-tag.outputs.release_tag }}';
-
-            const tagsResp = await github.rest.repos.listTags({
-              owner,
-              repo,
-              per_page: 100,
-            });
-            const tags = tagsResp.data;
-
-            const index = tags.findIndex(tag => tag.name === currentTag);
-            const previousTag =
-              index >= 0
-                ? (tags.slice(index + 1).find(tag => tag.name.startsWith('v'))?.name ?? '')
-                : '';
-
-            const notesResponse = await github.rest.repos.generateReleaseNotes({
-              owner,
-              repo,
-              tag_name: currentTag,
-              ...(previousTag ? { previous_tag_name: previousTag } : {}),
-              target_commitish: 'main',
-            });
-
-            core.info(
-              previousTag
-                ? `Generated changelog notes from ${previousTag} to ${currentTag}.`
-                : `Generated changelog notes for ${currentTag} (no previous tag found).`
-            );
-
-            core.setOutput('previous_tag', previousTag);
-            core.setOutput('notes', notesResponse.data.body ?? '');
-
-      - name: Write release notes to file
-        run: printf '%s' "$RELEASE_NOTES" > release-notes.md
-        env:
-          RELEASE_NOTES: ${{ steps.changelog_notes.outputs.notes }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -210,11 +157,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate registry metadata
+        run: pnpm validate-registry-metadata
 
       - name: Build
         run: pnpm build
@@ -222,13 +172,156 @@ jobs:
       - name: Pack npm tarball
         run: npm pack ./dist --pack-destination .
 
+      - name: Build release notes
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          toTag: ${{ needs.detect-tag.outputs.release_tag }}
+          failOnError: true
+
+      - name: Write release notes to file
+        run: printf '%s' "$RELEASE_NOTES" > release-notes.md
+        env:
+          RELEASE_NOTES: ${{ steps.build_changelog.outputs.changelog }}
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            *.tgz
+            release-notes.md
+          if-no-files-found: error
+
+  publish-to-npm:
+    name: Publish to npm
+    needs: [detect-tag, build-and-prepare]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-tag.outputs.release_tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm (Trusted Publishers + provenance)
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.detect-tag.outputs.release_tag }}" == *-* ]]; then
+            DIST_TAG=next
+          else
+            DIST_TAG=latest
+          fi
+          npm publish ./dist --access public --provenance --tag "$DIST_TAG"
+
+  publish-to-mcp-registry:
+    name: Publish to MCP Registry
+    needs: [detect-tag, publish-to-npm]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
+      !contains(needs.detect-tag.outputs.release_tag, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-tag.outputs.release_tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install mcp-publisher
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -f - mcp-publisher
+
+      - name: Login to MCP Registry with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish docs/public/server.json
+
+  create-github-release-prerelease:
+    name: Create GitHub Release (prerelease)
+    needs: [detect-tag, build-and-prepare, publish-to-npm]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
+      contains(needs.detect-tag.outputs.release_tag, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.detect-tag.outputs.release_tag }}
           body_path: release-notes.md
-          files: '*.tgz'
+          files: "*.tgz"
           draft: false
-          prerelease: ${{ contains(needs.detect-tag.outputs.release_tag, '-') }}
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  create-github-release-stable:
+    name: Create GitHub Release (stable)
+    needs: [detect-tag, build-and-prepare, publish-to-npm, publish-to-mcp-registry]
+    if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
+      !contains(needs.detect-tag.outputs.release_tag, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.detect-tag.outputs.release_tag }}
+          body_path: release-notes.md
+          files: "*.tgz"
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

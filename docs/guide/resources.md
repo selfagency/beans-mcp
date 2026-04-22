@@ -51,3 +51,29 @@ The package ships Agent Skills content at:
 - `skills/beans-mcp/SKILL.md`
 
 This supports `skills-npm` style discovery patterns.
+
+## MCP Registry publishing documentation
+
+The MCP Registry is a public, open, and searchable database of MCP servers and services. It provides a way for agents to discover and learn about available MCP servers and services.
+
+The MCP Registry is hosted and maintained by the MCP community. It is not affiliated with any specific company or organization.
+
+The MCP Registry is available at: <https://mcp-registry.self.agency>
+
+The MCP Registry publishes discovery artifacts at:
+
+- `/robots.txt`
+- `/server.json`
+- `/status.json`
+- `/.well-known/api-catalog`
+- `/.well-known/mcp.json`
+- `/.well-known/mcp/server-card.json`
+- `/.well-known/openid-configuration`
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/jwks.json`
+- `/.well-known/http-message-signatures-directory`
+- `/.well-known/agent-skills/index.json`
+- `/.well-known/agent-skills/beans-mcp/SKILL.md`
+
+These files give agents a machine-readable way to find the public docs, the packaged MCP server descriptor, the server card, and the bundled skill.

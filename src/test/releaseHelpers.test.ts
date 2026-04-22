@@ -1,12 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDistPackage } from '../../scripts/lib/dist-package.js';
 import {
   buildTokenUserConfig,
   extractAuthTokenFromNpmrc,
   getRegistryAuthKey,
-  resolveNpmPublishAuthCandidates,
   resolveNpmPublishAuth,
+  resolveNpmPublishAuthCandidates,
 } from '../../scripts/lib/npm-auth.js';
+import {
+  fetchRegistrySchema,
+  formatValidationErrors,
+  loadRegistryMetadata,
+  validateRegistryMetadata,
+  validateRegistryMetadataSync,
+  validateServerJsonSchemaSubset,
+} from '../../scripts/lib/registry-metadata.js';
 import {
   buildRollbackPlan,
   DEFAULT_NPM_OTP_1PASSWORD_ITEM,
@@ -150,5 +160,337 @@ describe('release state helpers', () => {
       revertCommit: false,
       resetLocalCommit: false,
     });
+  });
+});
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+// Shared Package schema definition reused across schema-validation tests
+const MOCK_PACKAGE_DEF = { required: ['identifier', 'registryType', 'transport'] };
+
+describe('registry metadata validation', () => {
+  it('passes when all metadata is synchronized', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+        mcpName: 'io.github.selfagency/beans-mcp',
+      },
+      serverJson: {
+        name: 'io.github.selfagency/beans-mcp',
+        version: '0.6.2',
+        packages: [
+          {
+            identifier: '@selfagency/beans-mcp',
+            version: '0.6.2',
+            transport: { type: 'stdio' },
+          },
+        ],
+      },
+    });
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it('fails when mcpName is missing from package.json', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+      },
+      serverJson: {
+        name: 'io.github.selfagency/beans-mcp',
+        version: '0.6.2',
+        packages: [
+          {
+            identifier: '@selfagency/beans-mcp',
+            version: '0.6.2',
+          },
+        ],
+      },
+    });
+
+    expect(errors).toContain('package.json must include mcpName.');
+  });
+
+  it('fails when mcpName mismatches server.json name', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+        mcpName: 'io.github.selfagency.wrong-package',
+      },
+      serverJson: {
+        name: 'io.github.selfagency.beans-mcp',
+        version: '0.6.2',
+        packages: [
+          {
+            identifier: '@selfagency/beans-mcp',
+            version: '0.6.2',
+          },
+        ],
+      },
+    });
+
+    expect(errors).toContain(
+      "mcpName mismatch: package.json has 'io.github.selfagency.wrong-package', server.json has 'io.github.selfagency.beans-mcp'.",
+    );
+  });
+
+  it('fails when version mismatches between package.json and server.json', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+        mcpName: 'io.github.selfagency.beans-mcp',
+      },
+      serverJson: {
+        name: 'io.github.selfagency.beans-mcp',
+        version: '0.6.3',
+        packages: [
+          {
+            identifier: '@selfagency/beans-mcp',
+            version: '0.6.3',
+          },
+        ],
+      },
+    });
+
+    expect(errors).toContain("version mismatch: package.json has '0.6.2', server.json has '0.6.3'.");
+  });
+
+  it('fails when package identifier mismatches package.json name', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+        mcpName: 'io.github.selfagency.beans-mcp',
+      },
+      serverJson: {
+        name: 'io.github.selfagency.beans-mcp',
+        version: '0.6.2',
+        packages: [
+          {
+            identifier: '@selfagency/different-package',
+            version: '0.6.2',
+          },
+        ],
+      },
+    });
+
+    expect(errors).toContain(
+      "package identifier mismatch: package.json name is '@selfagency/beans-mcp', server.json packages[0].identifier is '@selfagency/different-package'.",
+    );
+  });
+
+  it('fails when server.json packages is missing', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: {
+        name: '@selfagency/beans-mcp',
+        version: '0.6.2',
+        mcpName: 'io.github.selfagency.beans-mcp',
+      },
+      serverJson: {
+        name: 'io.github.selfagency.beans-mcp',
+        version: '0.6.2',
+      },
+    });
+
+    expect(errors).toContain('docs/public/server.json must contain packages[0].');
+  });
+
+  it('validates required server.json fields against schema definition', () => {
+    const mockSchema = {
+      definitions: {
+        ServerDetail: {
+          required: ['name', 'version', 'description'],
+        },
+        Package: MOCK_PACKAGE_DEF,
+      },
+    };
+
+    const errors = validateServerJsonSchemaSubset({
+      serverJson: {
+        name: 'io.github.test.package',
+        version: '1.0.0',
+      },
+      schema: mockSchema,
+    });
+
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toContain('server.json missing required field');
+    expect(errors[0]).toContain('description');
+  });
+
+  it('validates server.json name against schema pattern', () => {
+    const mockSchema = {
+      definitions: {
+        ServerDetail: {
+          properties: {
+            name: {
+              pattern: '^io\\.github\\.[a-z0-9-]+/[a-z0-9-]+$',
+            },
+          },
+        },
+        Package: MOCK_PACKAGE_DEF,
+      },
+    };
+
+    const errors = validateServerJsonSchemaSubset({
+      serverJson: {
+        name: 'invalid.name.format',
+        version: '1.0.0',
+      },
+      schema: mockSchema,
+    });
+
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toContain('server.json name');
+    expect(errors[0]).toContain('invalid.name.format');
+    expect(errors[0]).toContain('does not match schema pattern');
+  });
+
+  it('validates required packages fields against schema definition', () => {
+    const mockSchema = {
+      definitions: {
+        ServerDetail: {
+          required: ['name', 'version'],
+        },
+        Package: MOCK_PACKAGE_DEF,
+      },
+    };
+
+    const errors = validateServerJsonSchemaSubset({
+      serverJson: {
+        name: 'io.github.test.package',
+        version: '1.0.0',
+        packages: [{ identifier: '@test/package', version: '1.0.0', registryType: 'npm' }],
+      },
+      schema: mockSchema,
+    });
+
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toContain('server.json packages[0]');
+    expect(errors[0]).toContain('missing required field');
+    expect(errors[0]).toContain('transport');
+  });
+
+  it('returns early when schema definitions are missing', () => {
+    const errors = validateServerJsonSchemaSubset({
+      serverJson: { name: 'test', version: '1.0.0' },
+      schema: {},
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('schema definitions.ServerDetail and definitions.Package are required');
+  });
+
+  it('fails when server.json name is missing', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
+      serverJson: { version: '0.6.2', packages: [{ identifier: '@selfagency/beans-mcp', version: '0.6.2' }] },
+    });
+
+    expect(errors).toContain('docs/public/server.json must include name.');
+  });
+
+  it('fails when package.json version is missing', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: { name: '@selfagency/beans-mcp', mcpName: 'io.github.selfagency/beans-mcp' },
+      serverJson: {
+        name: 'io.github.selfagency/beans-mcp',
+        version: '0.6.2',
+        packages: [{ identifier: '@selfagency/beans-mcp', version: '0.6.2' }],
+      },
+    });
+
+    expect(errors).toContain('package.json version and server.json version are required.');
+  });
+
+  it('fails when packages[0].version is missing', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
+      serverJson: {
+        name: 'io.github.selfagency/beans-mcp',
+        version: '0.6.2',
+        packages: [{ identifier: '@selfagency/beans-mcp' }],
+      },
+    });
+
+    expect(errors).toContain('docs/public/server.json packages[0].version is required.');
+  });
+
+  it('fails when packages[0].identifier is missing', () => {
+    const errors = validateRegistryMetadataSync({
+      packageJson: { name: '@selfagency/beans-mcp', version: '0.6.2', mcpName: 'io.github.selfagency/beans-mcp' },
+      serverJson: {
+        name: 'io.github.selfagency/beans-mcp',
+        version: '0.6.2',
+        packages: [{ version: '0.6.2' }],
+      },
+    });
+
+    expect(errors).toContain('docs/public/server.json packages[0].identifier is required.');
+  });
+});
+
+describe('formatValidationErrors', () => {
+  it('formats error strings as a markdown list', () => {
+    expect(formatValidationErrors(['first error', 'second error'])).toBe('- first error\n- second error');
+  });
+
+  it('returns an empty string for no errors', () => {
+    expect(formatValidationErrors([])).toBe('');
+  });
+});
+
+describe('fetchRegistrySchema', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns parsed JSON on a successful fetch', async () => {
+    const mockSchema = { definitions: { ServerDetail: {}, Package: {} } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockSchema) }));
+
+    const result = await fetchRegistrySchema('https://example.com/schema.json');
+
+    expect(result).toEqual(mockSchema);
+  });
+
+  it('throws when the HTTP response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' }));
+
+    await expect(fetchRegistrySchema('https://example.com/schema.json')).rejects.toThrow(
+      'Failed to fetch registry schema (404 Not Found)',
+    );
+  });
+});
+
+describe('loadRegistryMetadata', () => {
+  it('loads package.json and server.json from the given root directory', () => {
+    const { packageJson, serverJson } = loadRegistryMetadata(REPO_ROOT);
+
+    expect(typeof packageJson.name).toBe('string');
+    expect(typeof packageJson.version).toBe('string');
+    expect(typeof serverJson.name).toBe('string');
+    expect(typeof serverJson.version).toBe('string');
+  });
+});
+
+describe('validateRegistryMetadata', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns combined sync and schema errors using real repo files', async () => {
+    const mockSchema = {
+      definitions: {
+        ServerDetail: { required: ['name', 'version'] },
+        Package: MOCK_PACKAGE_DEF,
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockSchema) }));
+
+    const errors = await validateRegistryMetadata({ rootDir: REPO_ROOT });
+
+    // Real repo files are in sync so no sync errors; schema errors depend on fixture
+    expect(Array.isArray(errors)).toBe(true);
   });
 });

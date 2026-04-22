@@ -124,6 +124,29 @@ src/
 - Update documentation if needed
 - Keep commits focused and atomic
 
+## Release Process
+
+Releases are automated via GitHub Actions. To release a new version:
+
+1. **Update version and changelog** in a PR:
+   - Update `version` in `package.json`
+   - Add an entry to `CHANGELOG.md` describing the changes
+   - Merge the PR to `main`
+
+2. **Trigger the release workflow**:
+   - Go to [GitHub Actions → Release](https://github.com/selfagency/beans-mcp/actions/workflows/release.yml)
+   - Click **Run workflow** (dropdown)
+   - Enter the version number (e.g., `1.2.3`)
+   - Click **Run workflow**
+
+3. **Workflow automation** handles:
+   - Creating and pushing a git tag (`v1.2.3`)
+   - Publishing to npm with proper dist-tags (`latest` or `next`)
+   - Publishing to MCP registry (stable releases only)
+   - Creating GitHub release notes with changelog
+
+**Version Format**: Use semantic versioning (e.g., `1.2.3` for stable, `1.2.3-beta.1` for prerelease)
+
 ## Reporting Issues
 
 When reporting bugs, please include:
