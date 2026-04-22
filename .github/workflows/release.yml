@@ -2,11 +2,11 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: [ "v*" ]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.2.3)'
+        description: "Version to release (e.g. 1.2.3)"
         required: true
         type: string
 
@@ -210,8 +210,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -227,7 +227,7 @@ jobs:
         with:
           tag_name: ${{ needs.detect-tag.outputs.release_tag }}
           body_path: release-notes.md
-          files: '*.tgz'
+          files: "*.tgz"
           draft: false
           prerelease: ${{ contains(needs.detect-tag.outputs.release_tag, '-') }}
         env:
@@ -235,7 +235,7 @@ jobs:
 
   publish-to-mcp-registry:
     name: Publish to MCP Registry
-    needs: [detect-tag, release]
+    needs: [ detect-tag, release ]
     if: needs.detect-tag.outputs.release_tag != '' && needs.detect-tag.outputs.ready == 'true' &&
       !contains(needs.detect-tag.outputs.release_tag, '-')
     runs-on: ubuntu-latest
@@ -253,7 +253,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install mcp-publisher
         run: |
@@ -264,6 +264,4 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: ./mcp-publisher publish --domain self.agency
-        env:
-          MCP_PUBLISHER_SERVER_JSON_PATH: docs/public/server.json
+        run: ./mcp-publisher publish docs/public/server.json
